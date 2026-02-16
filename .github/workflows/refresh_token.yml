@@ -1,0 +1,28 @@
+name: Instagram Token Auto-Refresh
+
+on:
+  schedule:
+    # Run on the 1st and 15th of every month (every ~15 days, well within the 60-day window)
+    - cron: '0 6 1,15 * *'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests PyNaCl
+
+      - name: Refresh Instagram Token
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: python refresh_instagram_token.py --update-secret

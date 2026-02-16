@@ -1,0 +1,29 @@
+# Environment
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Temp outputs (generated reels go here)
+temp/
+
+# Twitter credentials (sensitive)
+modules/twitter/credentials/
+
+# Helper scripts (not needed in production)
+get_instagram_ids.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Studio Template Editor</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Mulish:wght@300;400;500;600;700;800&family=Roboto:wght@300;400;500;700;900&family=Poppins:wght@300;400;500;600;700;800&family=Montserrat:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f0f14;
+            color: #e0e0e8;
+            min-height: 100vh;
+        }
+
+        .app-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 1px solid #2a2a40;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .app-header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .app-header .subtitle {
+            font-size: 13px;
+            color: #8888aa;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            height: calc(100vh - 60px);
+        }
+
+        /* --- CONTROLS PANEL --- */
+        .controls-panel {
+            background: #13131d;
+            border-right: 1px solid #22223a;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .controls-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .controls-panel::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        .section {
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #667eea;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .control-row label {
+            font-size: 13px;
+            color: #aab;
+            min-width: 80px;
+        }
+
+        .control-row .value-display {
+            font-size: 12px;
+            color: #667eea;
+            font-variant-numeric: tabular-nums;
+            min-width: 35px;
+            text-align: right;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 1;
+            height: 4px;
+            background: #2a2a40;
+            border-radius: 2px;
+            margin: 0 10px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: 2px solid #0f0f14;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: 2px solid #2a2a40;
+            border-radius: 6px;
+            width: 40px;
+            height: 30px;
+            cursor: pointer;
+            background: transparent;
+            padding: 2px;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 4px;
+        }
+
+        select {
+            background: #1a1a2e;
+            border: 1px solid #2a2a40;
+            color: #e0e0e8;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            min-width: 140px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        select:focus {
+            border-color: #667eea;
+        }
+
+        input[type="number"] {
+            background: #1a1a2e;
+            border: 1px solid #2a2a40;
+            color: #e0e0e8;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            width: 70px;
+            outline: none;
+        }
+
+        input[type="number"]:focus {
+            border-color: #667eea;
+        }
+
+        .alignment-group {
+            display: flex;
+            gap: 4px;
+        }
+
+        .alignment-group button {
+            background: #1a1a2e;
+            border: 1px solid #2a2a40;
+            color: #aab;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .alignment-group button:first-child {
+            border-radius: 6px 0 0 6px;
+        }
+
+        .alignment-group button:last-child {
+            border-radius: 0 6px 6px 0;
+        }
+
+        .alignment-group button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            cursor: pointer;
+        }
+
+        .toggle input {
+            display: none;
+        }
+
+        .toggle .slider {
+            position: absolute;
+            inset: 0;
+            background: #2a2a40;
+            border-radius: 11px;
+            transition: 0.3s;
+        }
+
+        .toggle .slider::before {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: #888;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle input:checked+.slider {
+            background: #667eea;
+        }
+
+        .toggle input:checked+.slider::before {
+            transform: translateX(18px);
+            background: white;
+        }
+
+        .preview-text-input {
+            width: 100%;
+            background: #1a1a2e;
+            border: 1px solid #2a2a40;
+            color: #e0e0e8;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            resize: vertical;
+            min-height: 60px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .preview-text-input:focus {
+            border-color: #667eea;
+        }
+
+        /* --- CONFIG OUTPUT --- */
+        .config-output {
+            margin-top: 10px;
+        }
+
+        .config-output textarea {
+            width: 100%;
+            height: 160px;
+            background: #0a0a12;
+            border: 1px solid #2a2a40;
+            color: #4ade80;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 11px;
+            padding: 12px;
+            border-radius: 8px;
+            resize: vertical;
+            outline: none;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-copy {
+            background: #1a1a2e;
+            border: 1px solid #2a2a40;
+            color: #e0e0e8;
+            margin-top: 8px;
+        }
+
+        .btn-copy:hover {
+            border-color: #667eea;
+        }
+
+        .btn-copy.copied {
+            background: #1a4028;
+            border-color: #4ade80;
+            color: #4ade80;
+        }
+
+        /* --- VIDEO CANVAS AREA --- */
+        .canvas-area {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #0a0a12;
+            position: relative;
+        }
+
+        .video-wrapper {
+            position: relative;
+            display: inline-block;
+            border: 1px solid #22223a;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .video-wrapper video {
+            display: block;
+            max-height: calc(100vh - 120px);
+            max-width: 100%;
+        }
+
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        .text-area-box {
+            position: absolute;
+            border: 2px dashed #667eea;
+            background: rgba(102, 126, 234, 0.08);
+            pointer-events: none;
+        }
+
+        .text-area-box .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #667eea;
+            border-radius: 2px;
+            pointer-events: auto;
+            cursor: nwse-resize;
+            right: -5px;
+            bottom: -5px;
+        }
+
+        .text-area-box .move-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: calc(100% - 10px);
+            height: 100%;
+            pointer-events: auto;
+            cursor: move;
+        }
+
+        /* Live text preview on video */
+        .live-text-preview {
+            position: absolute;
+            overflow: hidden;
+            word-wrap: break-word;
+            pointer-events: none;
+            line-height: 1.5;
+        }
+
+        .file-loader {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-loader input[type="file"] {
+            display: none;
+        }
+
+        .file-loader .file-btn {
+            padding: 8px 16px;
+            background: #1a1a2e;
+            border: 1px dashed #2a2a40;
+            border-radius: 8px;
+            color: #aab;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .file-loader .file-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .file-name {
+            font-size: 12px;
+            color: #667eea;
+        }
+
+        .dim-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .dim-inputs .dim-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .dim-inputs .dim-field label {
+            font-size: 11px;
+            color: #777;
+        }
+
+        .separator {
+            border: none;
+            border-top: 1px solid #1f1f30;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-header">
+        <span style="font-size:24px">🎬</span>
+        <div>
+            <h1>Studio Template Editor</h1>
+            <div class="subtitle">Configure text overlay for video templates</div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <!-- LEFT: Controls -->
+        <div class="controls-panel">
+
+            <!-- Video Loader -->
+            <div class="section">
+                <div class="section-title">Video</div>
+                <div class="file-loader">
+                    <label class="file-btn" for="videoLoader">📁 Load Video</label>
+                    <input type="file" id="videoLoader" accept="video/*">
+                    <span class="file-name" id="fileName">No file loaded</span>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Text Area Dimensions -->
+            <div class="section">
+                <div class="section-title">Text Area Box</div>
+                <p style="font-size: 11px; color: #666; margin-bottom: 10px;">Click + drag on video, or edit values
+                    below</p>
+                <div class="dim-inputs">
+                    <div class="dim-field">
+                        <label>X</label>
+                        <input type="number" id="dimX" value="0" min="0">
+                    </div>
+                    <div class="dim-field">
+                        <label>Y</label>
+                        <input type="number" id="dimY" value="0" min="0">
+                    </div>
+                    <div class="dim-field">
+                        <label>Width</label>
+                        <input type="number" id="dimW" value="0" min="0">
+                    </div>
+                    <div class="dim-field">
+                        <label>Height</label>
+                        <input type="number" id="dimH" value="0" min="0">
+                    </div>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Font Settings -->
+            <div class="section">
+                <div class="section-title">Font</div>
+                <div class="control-row">
+                    <label>Family</label>
+                    <select id="fontFamily">
+                        <option value="Arial-Regular.ttf" data-css="'Arial', sans-serif">Arial</option>
+                        <option value="Verdana-Regular.ttf" data-css="'Verdana', sans-serif">Verdana</option>
+                        <option value="Georgia-Regular.ttf" data-css="'Georgia', serif">Georgia</option>
+                        <option value="TrebuchetMS-Regular.ttf" data-css="'Trebuchet MS', sans-serif">Trebuchet MS
+                        </option>
+                    </select>
+                </div>
+
+                <div class="control-row">
+                    <label>Size</label>
+                    <input type="range" id="fontSize" min="16" max="80" value="38">
+                    <span class="value-display" id="fontSizeVal">38</span>
+                </div>
+
+                <div class="control-row">
+                    <label>Weight</label>
+                    <select id="fontWeight">
+                        <option value="300">Light (300)</option>
+                        <option value="400" selected>Regular (400)</option>
+                        <option value="500">Medium (500)</option>
+                        <option value="600">SemiBold (600)</option>
+                        <option value="700">Bold (700)</option>
+                        <option value="800">ExtraBold (800)</option>
+                    </select>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Color Settings -->
+            <div class="section">
+                <div class="section-title">Color</div>
+                <div class="control-row">
+                    <label>Text Color</label>
+                    <input type="color" id="textColor" value="#000000">
+                </div>
+                <div class="control-row">
+                    <div class="toggle-row">
+                        <label class="toggle">
+                            <input type="checkbox" id="shadowToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <label style="font-size: 13px; color: #aab;">Shadow</label>
+                    </div>
+                    <input type="color" id="shadowColor" value="#000000" disabled>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Layout -->
+            <div class="section">
+                <div class="section-title">Layout</div>
+                <div class="control-row">
+                    <label>Alignment</label>
+                    <div class="alignment-group">
+                        <button data-align="left" class="active" title="Left">☰</button>
+                        <button data-align="center" title="Center">☰</button>
+                        <button data-align="right" title="Right">☰</button>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <label>Padding</label>
+                    <input type="range" id="padding" min="0" max="60" value="20">
+                    <span class="value-display" id="paddingVal">20</span>
+                </div>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Preview Text -->
+            <div class="section">
+                <div class="section-title">Preview Text</div>
+                <textarea class="preview-text-input"
+                    id="previewText">What is a four letter word that starts with W and ends with T</textarea>
+            </div>
+
+            <hr class="separator">
+
+            <!-- Config Output -->
+            <div class="section">
+                <div class="section-title">Generated Config</div>
+                <div class="config-output">
+                    <textarea id="configOutput" readonly>Load a video to get started...</textarea>
+                </div>
+                <button class="btn btn-copy" id="copyBtn" onclick="copyConfig()">📋 Copy Config JSON</button>
+            </div>
+
+        </div>
+
+        <!-- RIGHT: Video Canvas -->
+        <div class="canvas-area">
+            <div class="video-wrapper" id="videoWrapper" style="display:none;">
+                <video id="video" muted></video>
+                <div class="video-overlay" id="overlay"></div>
+                <div class="text-area-box" id="textBox" style="display:none;">
+                    <div class="move-handle" id="moveHandle"></div>
+                    <div class="resize-handle" id="resizeHandle"></div>
+                </div>
+                <div class="live-text-preview" id="livePreview"></div>
+            </div>
+
+            <div id="emptyState" style="text-align:center; color:#555;">
+                <p style="font-size:48px; margin-bottom:16px;">📹</p>
+                <p style="font-size:15px;">Load a video template to begin</p>
+                <p style="font-size:12px; margin-top:8px; color:#444;">Drag and drop or use the button on the left</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        const state = {
+            videoFile: null,
+            videoW: 1080,
+            videoH: 1920,
+            // Text area in video-pixel coords
+            box: { x: 0, y: 0, w: 0, h: 0 },
+            fontSize: 38,
+            fontFamily: 'Mulish-Regular.ttf',
+            fontWeight: '400',
+            textColor: '#000000',
+            shadowEnabled: false,
+            shadowColor: '#000000',
+            alignment: 'left',
+            padding: 20,
+            previewText: "What is a four letter word that starts with W and ends with T"
+        };
+
+        // --- DOM Refs ---
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const textBox = document.getElementById('textBox');
+        const livePreview = document.getElementById('livePreview');
+        const wrapper = document.getElementById('videoWrapper');
+        const emptyState = document.getElementById('emptyState');
+        const configOutput = document.getElementById('configOutput');
+
+        // Weight value -> config key name
+        const weightNameMap = {
+            '300': 'light', '400': 'regular', '500': 'medium',
+            '600': 'semibold', '700': 'bold', '800': 'extrabold'
+        };
+
+        // --- Video Loading ---
+        document.getElementById('videoLoader').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            loadVideo(file);
+        });
+
+        // Drag and drop
+        document.querySelector('.canvas-area').addEventListener('dragover', e => { e.preventDefault(); });
+        document.querySelector('.canvas-area').addEventListener('drop', e => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('video/')) loadVideo(file);
+        });
+
+        function loadVideo(file) {
+            state.videoFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            const url = URL.createObjectURL(file);
+            video.src = url;
+
+            video.addEventListener('loadedmetadata', () => {
+                state.videoW = video.videoWidth;
+                state.videoH = video.videoHeight;
+                wrapper.style.display = 'inline-block';
+                emptyState.style.display = 'none';
+
+                // Play and pause to show first frame
+                video.play().then(() => {
+                    setTimeout(() => video.pause(), 100);
+                }).catch(() => { });
+
+                updateConfig();
+            }, { once: true });
+        }
+
+        // --- Scale helpers ---
+        function getScale() {
+            const rect = video.getBoundingClientRect();
+            return {
+                sx: state.videoW / rect.width,
+                sy: state.videoH / rect.height,
+                rect: rect,
+                wrapRect: wrapper.getBoundingClientRect()
+            };
+        }
+
+        // Convert video coords to CSS px on the displayed element
+        function videoToCSS(vx, vy, vw, vh) {
+            const { sx, sy } = getScale();
+            return { x: vx / sx, y: vy / sy, w: vw / sx, h: vh / sy };
+        }
+
+        // Convert CSS px to video coords
+        function cssToVideo(cx, cy, cw, ch) {
+            const { sx, sy } = getScale();
+            return {
+                x: Math.round(cx * sx), y: Math.round(cy * sy),
+                w: Math.round(cw * sx), h: Math.round(ch * sy)
+            };
+        }
+
+        // --- Box Drawing ---
+        let drawState = { active: false, startX: 0, startY: 0 };
+
+        overlay.addEventListener('mousedown', (e) => {
+            if (!video.src) return;
+            // Only start draw if not clicking on handles
+            const rect = overlay.getBoundingClientRect();
+            drawState.active = true;
+            drawState.startX = e.clientX - rect.left;
+            drawState.startY = e.clientY - rect.top;
+
+            textBox.style.display = 'block';
+            textBox.style.left = drawState.startX + 'px';
+            textBox.style.top = drawState.startY + 'px';
+            textBox.style.width = '0px';
+            textBox.style.height = '0px';
+        });
+
+        overlay.addEventListener('mousemove', (e) => {
+            if (!drawState.active) return;
+            const rect = overlay.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+
+            const left = Math.min(drawState.startX, cx);
+            const top = Math.min(drawState.startY, cy);
+            const w = Math.abs(cx - drawState.startX);
+            const h = Math.abs(cy - drawState.startY);
+
+            textBox.style.left = left + 'px';
+            textBox.style.top = top + 'px';
+            textBox.style.width = w + 'px';
+            textBox.style.height = h + 'px';
+
+            const vid = cssToVideo(left, top, w, h);
+            state.box = { x: vid.x, y: vid.y, w: vid.w, h: vid.h };
+            syncDimInputs();
+            updateLivePreview();
+            updateConfig();
+        });
+
+        overlay.addEventListener('mouseup', () => { drawState.active = false; });
+
+        // --- Box Move Handle ---
+        let moveState = { active: false, offX: 0, offY: 0 };
+
+        document.getElementById('moveHandle').addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            moveState.active = true;
+            const boxRect = textBox.getBoundingClientRect();
+            moveState.offX = e.clientX - boxRect.left;
+            moveState.offY = e.clientY - boxRect.top;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (moveState.active) {
+                const wrapRect = wrapper.getBoundingClientRect();
+                let newX = e.clientX - wrapRect.left - moveState.offX;
+                let newY = e.clientY - wrapRect.top - moveState.offY;
+                newX = Math.max(0, Math.min(newX, wrapRect.width - textBox.offsetWidth));
+                newY = Math.max(0, Math.min(newY, wrapRect.height - textBox.offsetHeight));
+
+                textBox.style.left = newX + 'px';
+                textBox.style.top = newY + 'px';
+
+                const vid = cssToVideo(newX, newY, textBox.offsetWidth, textBox.offsetHeight);
+                state.box = { x: vid.x, y: vid.y, w: vid.w, h: vid.h };
+                syncDimInputs();
+                updateLivePreview();
+                updateConfig();
+            }
+
+            if (resizeState.active) {
+                const wrapRect = wrapper.getBoundingClientRect();
+                const boxLeft = parseFloat(textBox.style.left);
+                const boxTop = parseFloat(textBox.style.top);
+                let newW = e.clientX - wrapRect.left - boxLeft;
+                let newH = e.clientY - wrapRect.top - boxTop;
+                newW = Math.max(20, newW);
+                newH = Math.max(20, newH);
+
+                textBox.style.width = newW + 'px';
+                textBox.style.height = newH + 'px';
+
+                const vid = cssToVideo(boxLeft, boxTop, newW, newH);
+                state.box = { x: vid.x, y: vid.y, w: vid.w, h: vid.h };
+                syncDimInputs();
+                updateLivePreview();
+                updateConfig();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            moveState.active = false;
+            resizeState.active = false;
+        });
+
+        // --- Box Resize Handle ---
+        let resizeState = { active: false };
+        document.getElementById('resizeHandle').addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            resizeState.active = true;
+        });
+
+        // --- Dimension Inputs ---
+        ['dimX', 'dimY', 'dimW', 'dimH'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                state.box.x = parseInt(document.getElementById('dimX').value) || 0;
+                state.box.y = parseInt(document.getElementById('dimY').value) || 0;
+                state.box.w = parseInt(document.getElementById('dimW').value) || 0;
+                state.box.h = parseInt(document.getElementById('dimH').value) || 0;
+                updateBoxFromState();
+                updateLivePreview();
+                updateConfig();
+            });
+        });
+
+        function syncDimInputs() {
+            document.getElementById('dimX').value = state.box.x;
+            document.getElementById('dimY').value = state.box.y;
+            document.getElementById('dimW').value = state.box.w;
+            document.getElementById('dimH').value = state.box.h;
+        }
+
+        function updateBoxFromState() {
+            if (!video.src) return;
+            const css = videoToCSS(state.box.x, state.box.y, state.box.w, state.box.h);
+            textBox.style.display = 'block';
+            textBox.style.left = css.x + 'px';
+            textBox.style.top = css.y + 'px';
+            textBox.style.width = css.w + 'px';
+            textBox.style.height = css.h + 'px';
+        }
+
+        // --- Control Bindings ---
+        // Font size
+        document.getElementById('fontSize').addEventListener('input', (e) => {
+            state.fontSize = parseInt(e.target.value);
+            document.getElementById('fontSizeVal').textContent = state.fontSize;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Font family
+        document.getElementById('fontFamily').addEventListener('change', (e) => {
+            state.fontFamily = e.target.value;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Font weight
+        document.getElementById('fontWeight').addEventListener('change', (e) => {
+            state.fontWeight = e.target.value;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Text color
+        document.getElementById('textColor').addEventListener('input', (e) => {
+            state.textColor = e.target.value;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Shadow toggle
+        document.getElementById('shadowToggle').addEventListener('change', (e) => {
+            state.shadowEnabled = e.target.checked;
+            document.getElementById('shadowColor').disabled = !e.target.checked;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Shadow color
+        document.getElementById('shadowColor').addEventListener('input', (e) => {
+            state.shadowColor = e.target.value;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Alignment
+        document.querySelectorAll('.alignment-group button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.alignment-group button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                state.alignment = btn.dataset.align;
+                updateLivePreview();
+                updateConfig();
+            });
+        });
+
+        // Padding
+        document.getElementById('padding').addEventListener('input', (e) => {
+            state.padding = parseInt(e.target.value);
+            document.getElementById('paddingVal').textContent = state.padding;
+            updateLivePreview();
+            updateConfig();
+        });
+
+        // Preview text
+        document.getElementById('previewText').addEventListener('input', (e) => {
+            state.previewText = e.target.value;
+            updateLivePreview();
+        });
+
+        // --- Live Text Preview ---
+        function updateLivePreview() {
+            if (!video.src || !state.box.w || !state.box.h) {
+                livePreview.style.display = 'none';
+                return;
+            }
+
+            const css = videoToCSS(state.box.x, state.box.y, state.box.w, state.box.h);
+            const { sx } = getScale();
+            const scaledFontSize = state.fontSize / sx;
+            const scaledPadding = state.padding / sx;
+
+            // Get CSS font family from selected option
+            const fontSelect = document.getElementById('fontFamily');
+            const cssFont = fontSelect.options[fontSelect.selectedIndex].dataset.css || "'Inter', sans-serif";
+
+            livePreview.style.display = 'block';
+            livePreview.style.left = (css.x + scaledPadding) + 'px';
+            livePreview.style.top = (css.y + scaledPadding) + 'px';
+            livePreview.style.width = (css.w - scaledPadding * 2) + 'px';
+            livePreview.style.height = (css.h - scaledPadding * 2) + 'px';
+            livePreview.style.fontSize = scaledFontSize + 'px';
+            livePreview.style.fontFamily = cssFont;
+            livePreview.style.fontWeight = state.fontWeight;
+            livePreview.style.color = state.textColor;
+            livePreview.style.textAlign = state.alignment;
+            livePreview.style.display = 'flex';
+            livePreview.style.alignItems = 'center';
+            livePreview.style.lineHeight = '1.5';
+
+            if (state.shadowEnabled) {
+                livePreview.style.textShadow = `2px 2px 2px ${state.shadowColor}`;
+            } else {
+                livePreview.style.textShadow = 'none';
+            }
+
+            // Wrap text in a div for proper alignment
+            livePreview.innerHTML = `<div style="width:100%">${state.previewText.replace(/\n/g, '<br>')}</div>`;
+        }
+
+        // --- Config Generation ---
+        function updateConfig() {
+            if (!state.videoFile) return;
+
+            const weightName = weightNameMap[state.fontWeight] || 'regular';
+
+            const config = {
+                text_area: {
+                    x: state.box.x,
+                    y: state.box.y,
+                    width: state.box.w,
+                    height: state.box.h
+                },
+                font: state.fontFamily,
+                font_size: state.fontSize,
+                color: state.textColor,
+                shadow: state.shadowEnabled ? state.shadowColor : null,
+                alignment: state.alignment,
+                font_weight: weightName,
+                padding: state.padding
+            };
+
+            const jsonStr = JSON.stringify(config, null, 2);
+            // Format as a dictionary entry for copy-pasting
+            const finalOutput = `  "${state.videoFile.name}": ${jsonStr},`;
+            
+            configOutput.value = finalOutput;
+        }
+
+        // --- Copy Config ---
+        function copyConfig() {
+            const btn = document.getElementById('copyBtn');
+            navigator.clipboard.writeText(configOutput.value).then(() => {
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy Config JSON';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // --- Window resize handler ---
+        window.addEventListener('resize', () => {
+            if (video.src) {
+                updateBoxFromState();
+                updateLivePreview();
+            }
+        });
+    </script>
+
+</body>
+
+</html>

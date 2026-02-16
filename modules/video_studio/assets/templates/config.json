@@ -1,0 +1,407 @@
+{
+  "New_sample.mp4": {
+    "text_area": {
+      "x": 60,
+      "y": 1143,
+      "width": 970,
+      "height": 313
+    },
+    "font": "Verdana-Regular.ttf",
+    "font_size": 59,
+    "color": "#000000",
+    "shadow": null,
+    "alignment": "left",
+    "font_weight": "medium",
+    "padding": 20
+  },
+  "cat.mp4": {
+    "text_area": {
+      "x": 44,
+      "y": 1051,
+      "width": 986,
+      "height": 300
+    },
+    "font": "TrebuchetMS-Regular.ttf",
+    "font_size": 62,
+    "color": "#000000",
+    "shadow": null,
+    "alignment": "left",
+    "font_weight": "medium",
+    "padding": 20
+  },
+       "cat1.mp4": {
+  "text_area": {
+    "x": 37,
+    "y": 1048,
+    "width": 999,
+    "height": 483
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "jerry.mp4": {
+  "text_area": {
+    "x": 37,
+    "y": 1048,
+    "width": 1006,
+    "height": 480
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "aus_real.mp4": {
+  "text_area": {
+    "x": 57,
+    "y": 1064,
+    "width": 973,
+    "height": 473
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 68,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "traffic_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "stock_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "scenery_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "office_boredom1_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "office_boredom_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback6_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback5_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback4_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback3_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback2_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "fallback1_reel.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 780,
+    "width": 950,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 65,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 10
+},
+  "cricket_runout_reel.mp4": {
+  "text_area": {
+    "x": 50,
+    "y": 862,
+    "width": 973,
+    "height": 441
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 64,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "cricket_random1_reel.mp4": {
+  "text_area": {
+    "x": 50,
+    "y": 862,
+    "width": 973,
+    "height": 441
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 64,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "cricket_rain_reel.mp4": {
+  "text_area": {
+    "x": 50,
+    "y": 862,
+    "width": 973,
+    "height": 441
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 64,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "cricket_India_reel.mp4": {
+  "text_area": {
+    "x": 60,
+    "y": 1087,
+    "width": 973,
+    "height": 438
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 77,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "cricket_crowd_reel.mp4": {
+  "text_area": {
+    "x": 60,
+    "y": 849,
+    "width": 967,
+    "height": 454
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 62,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "cricket_caught_reel.mp4": {
+  "text_area": {
+    "x": 60,
+    "y": 849,
+    "width": 967,
+    "height": 454
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 62,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "cricket_bumrah_reel.mp4": {
+  "text_area": {
+    "x": 60,
+    "y": 849,
+    "width": 967,
+    "height": 454
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 62,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "cricket_aus_reel.mp4": {
+  "text_area": {
+    "x": 60,
+    "y": 849,
+    "width": 967,
+    "height": 454
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 62,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "cheering_reel.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 785,
+    "width": 918,
+    "height": 460
+  },
+  "font": "Mulish-Regular.ttf",
+  "font_size": 68,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "regular",
+  "padding": 20
+},
+  "cat_typing_reel.mp4": {
+  "text_area": {
+    "x": 70,
+    "y": 784,
+    "width": 944,
+    "height": 473
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 50,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 18
+},
+  "crowd_reel.mp4": {
+  "text_area": {
+    "x": 70,
+    "y": 784,
+    "width": 944,
+    "height": 473
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 50,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 18
+}
+}
