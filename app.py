@@ -547,8 +547,9 @@ elif page == "✨ Caption Generator":
         with st.spinner("✨ Generating viral caption..."):
             try:
                 from modules.caption_generator import generate_caption, format_caption
-                raw = generate_caption(caption_input.strip(), topic=caption_topic if caption_topic else "")
-                formatted = format_caption(raw)
+                plat = platform.lower()
+                raw = generate_caption(caption_input.strip(), topic=caption_topic if caption_topic else "", platform=plat)
+                formatted = format_caption(raw, platform=plat)
 
                 st.markdown("### 📝 Generated Caption")
                 st.text_area("Caption (edit as needed)", value=formatted, height=200, key="generated_caption_output")
@@ -733,8 +734,8 @@ elif page == "📸 Post to Instagram":
                 with st.spinner("✨ Generating..."):
                     try:
                         from modules.caption_generator import generate_caption, format_caption
-                        raw = generate_caption(ig_caption.strip())
-                        formatted = format_caption(raw)
+                        raw = generate_caption(ig_caption.strip(), platform="instagram")
+                        formatted = format_caption(raw, platform="instagram")
                         st.session_state["ig_standalone_caption"] = formatted
                         st.rerun()
                     except Exception as e:
@@ -889,8 +890,8 @@ elif page == "🐦 Post to Twitter":
                 with st.spinner("✨ Generating..."):
                     try:
                         from modules.caption_generator import generate_caption, format_caption
-                        raw = generate_caption(tweet_text.strip())
-                        formatted = format_caption(raw)
+                        raw = generate_caption(tweet_text.strip(), platform="twitter")
+                        formatted = format_caption(raw, platform="twitter")
                         st.session_state["tw_standalone_text"] = formatted
                         st.rerun()
                     except Exception as e:
