@@ -135,18 +135,24 @@ def llm_curator(raw_data_list, history_list=None):
     TASK:
     1. Filter out tragedy (death/accidents) and boring politics.
     2. Select exactly 5 distinct topics with high "Comedic Potential" (Irony, Frustration, Absurdity).
-    3. **CRITICAL**: Do NOT return generic topics like "Bangalore Traffic". 
-       Instead, write a **Specific Headline** based on the news item, e.g., "Bangalore CEO Stuck at Silk Board for 3 Days" or "Zomato Agent Delivers Pizza on Horseback".
-    4. Ensure variety from the 'Recent Topics' list.
+    3. **CRITICAL**: Summarize the REAL news story in one simple sentence.
+       GOOD: "Zomato raises delivery fee in Bangalore to ₹50"
+       GOOD: "IPL team pays 24 crore for a player who scored 12 runs last season"
+       BAD: "Bangalore CEO Stuck at Silk Board for 3 Days" (this is made up)
+       BAD: "Zomato Agent Delivers Pizza on Horseback" (this is made up)
+       Do NOT invent or exaggerate — the joke generator will handle the comedy.
+    4. LANGUAGE: Use simple, everyday English. Write like you're telling a friend what happened.
+       No fancy words, no dramatic phrasing.
+    5. Ensure variety from the 'Recent Topics' list.
 
     OUTPUT JSON:
     {{
       "topics": [
-        "Specific Headline 1",
-        "Specific Headline 2",
-        "Specific Headline 3",
-        "Specific Headline 4",
-        "Specific Headline 5"
+        "Simple real news summary 1",
+        "Simple real news summary 2",
+        "Simple real news summary 3",
+        "Simple real news summary 4",
+        "Simple real news summary 5"
       ]
     }}
     """

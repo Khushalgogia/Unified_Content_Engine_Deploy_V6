@@ -222,7 +222,7 @@ OUTPUT FORMAT (JSON ONLY):
     "Option 3: [Trait/Angle] -> [Scenario]"
   ],
   "selected_strategy": "The best option from above",
-  "draft_joke": "The final joke text. Max 40 words. NO FILLER (e.g. 'The health crisis is dire'). Start directly with the setup."
+  "draft_joke": "The final joke text. Max 40 words. NO FILLER (e.g. 'The health crisis is dire'). Start directly with the setup. LANGUAGE: Use simple, everyday words a 15-year-old would understand. NO complex vocabulary, NO obscure references. Write like you're telling a joke to friends."
 }"""
 
     prompt = f"""REFERENCE JOKE:

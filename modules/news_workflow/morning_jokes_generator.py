@@ -29,7 +29,7 @@ def run_daily_pipeline():
     print()
     print("=" * 60)
     print("🎭 MORNING JOKES GENERATOR")
-    print("   5 Headlines × 20 Jokes = 100 Jokes")
+    print("   5 Headlines × ~10 Best Bridges = ~50 Quality Jokes")
     print("=" * 60)
     print()
 
@@ -58,16 +58,18 @@ def run_daily_pipeline():
 
         # Search bridges
         try:
-            matches = search_bridges(headline, top_k=20)
-            print(f"   🔍 Found {len(matches)} bridge matches")
+            matches = search_bridges(headline, top_k=15)
+            # Filter: keep only bridges with decent similarity, cap at 10
+            quality_matches = [m for m in matches if m.get('similarity', 0) > 0.25][:10]
+            print(f"   🔍 Found {len(matches)} bridges → {len(quality_matches)} quality matches (similarity > 0.25)")
         except Exception as e:
             print(f"   ❌ Bridge search failed: {e}")
             jokes_by_headline[headline] = []
             continue
 
-        # Generate jokes from all matches (up to 20)
+        # Generate jokes from quality matches
         try:
-            jokes = generate_from_selected(headline, matches[:20])
+            jokes = generate_from_selected(headline, quality_matches)
             jokes_by_headline[headline] = jokes
             print(f"   ✅ Generated {len(jokes)} jokes")
         except Exception as e:

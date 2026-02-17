@@ -6,8 +6,13 @@ Uses Gemini to generate structured captions for Instagram/Twitter posts.
 import os
 import json
 import re
+from pathlib import Path
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
+# Load .env from project root so GEMINI_API_KEY is always available
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 # Lazy-init Gemini client (env vars may not be set at module import time)

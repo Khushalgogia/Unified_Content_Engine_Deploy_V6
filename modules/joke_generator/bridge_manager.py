@@ -49,9 +49,14 @@ def expand_headline_to_themes(headline: str) -> str:
     prompt = f"""
     Topic: "{headline}"
     
-    List 5 abstract themes or concepts associated with this topic.
+    List 5 themes for finding JOKE STRUCTURES that could work for this topic.
+    Mix abstract emotions AND concrete relatable situations people joke about.
     
-    Example: If topic is 'Traffic', themes are 'Waiting', 'Frustration', 'Wasting Time', 'Trapped'.
+    GOOD example: If topic is "Zomato raises delivery fee to ₹50",
+    themes are "Price shock, Being Cheap, Hidden Costs, Paying More for Less, Corporate Greed"
+    
+    BAD example: "Frustration, Sadness, Anger, Disappointment, Stress"
+    (These are too generic and won't find relevant joke structures)
     
     OUTPUT: Just the comma-separated themes, nothing else.
     """
