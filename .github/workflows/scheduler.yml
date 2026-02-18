@@ -18,7 +18,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install supabase requests requests-oauthlib
+        run: pip install supabase requests requests-oauthlib python-dotenv
 
       - name: Run Publisher Script
         env:

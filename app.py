@@ -78,6 +78,23 @@ for _acct_name, _acct_envs in _TW_ACCOUNTS.items():
             with open(_cred_file, "w") as _f:
                 _json.dump(_cred_data, _f, indent=2)
 
+# ─── Start Background Auto-Publisher ─────────────────────────────────────────
+# Runs a daemon thread that checks Supabase every 60s for due scheduled posts
+# and publishes them automatically (Instagram, Twitter text, Twitter video).
+
+@st.cache_resource
+def _init_auto_publisher():
+    """Start the auto-publisher thread (runs once per Streamlit server)."""
+    try:
+        from modules.scheduler.auto_publisher import start_publisher
+        start_publisher()
+        return True
+    except Exception as e:
+        print(f"⚠️ Auto-publisher failed to start: {e}")
+        return False
+
+_auto_publisher_active = _init_auto_publisher()
+
 
 # ─── Custom CSS ───────────────────────────────────────────────────────────────
 st.markdown("""
@@ -1023,13 +1040,295 @@ elif page == "📅 Schedule Manager":
     </div>
     """, unsafe_allow_html=True)
 
-    if st.button("🔄 Refresh Schedule", use_container_width=True):
-        st.rerun()
+    # ── Auto-publisher status ─────────────────────────────────────────────
+    if _auto_publisher_active:
+        st.markdown(
+            '<span class="status-ok">🟢 Auto-Publisher Active</span> '
+            '<span style="color:#94a3b8;font-size:0.85rem;">— checks every 60s for due posts</span>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<span class="status-error">🔴 Auto-Publisher Inactive</span> '
+            '<span style="color:#94a3b8;font-size:0.85rem;">— check logs for errors</span>',
+            unsafe_allow_html=True,
+        )
 
     try:
         from modules.scheduler.scheduler_db import (
-            get_all_scheduled, delete_schedule, update_schedule_time, format_time_ist
+            get_all_scheduled, delete_schedule, update_schedule_time,
+            format_time_ist, retry_failed, retry_all_failed,
         )
+        import pytz
+        from dateutil.parser import parse as _parse_dt
+        IST = pytz.timezone("Asia/Kolkata")
+
+        PLATFORM_ICONS = {
+            "instagram": "📸",
+            "twitter_text": "🐦",
+            "twitter_video": "🎬",
+        }
+        PLATFORM_LABELS = {
+            "instagram": "Instagram Reel",
+            "twitter_text": "Tweet (Text)",
+            "twitter_video": "Tweet (Video)",
+        }
+
+        pending = get_all_scheduled(status="pending")
+        posted  = get_all_scheduled(status="posted")
+        failed  = get_all_scheduled(status="failed")
+
+        pending.sort(key=lambda p: p.get("scheduled_time", ""))
+        posted.sort(key=lambda p: p.get("posted_at", ""), reverse=True)
+        failed.sort(key=lambda p: p.get("scheduled_time", ""), reverse=True)
+
+        # ── Summary Stats Bar ─────────────────────────────────────────────
+        st.markdown("""
+        <style>
+            .stat-row { display: flex; gap: 1rem; margin: 0.8rem 0 1.2rem 0; }
+            .stat-card {
+                flex: 1; padding: 1rem 1.4rem; border-radius: 12px;
+                background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+                text-align: center;
+            }
+            .stat-num { font-size: 2rem; font-weight: 800; line-height: 1.2; }
+            .stat-label { font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+            .stat-pending .stat-num { color: #facc15; }
+            .stat-posted .stat-num  { color: #10b981; }
+            .stat-failed .stat-num  { color: #ef4444; }
+            .post-card {
+                background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 0.2rem;
+            }
+            .post-card-failed  { border-color: rgba(239,68,68,0.25); }
+            .post-card-posted  { border-color: rgba(16,185,129,0.2); }
+            .post-card-pending { border-color: rgba(250,204,21,0.2); }
+            .post-platform { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 0.3rem; }
+            .post-caption { color: #e2e8f0; font-size: 0.92rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+            .post-meta { color: #64748b; font-size: 0.78rem; margin-top: 0.5rem; }
+            .post-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
+                          border-radius: 8px; padding: 0.6rem 0.8rem; margin-top: 0.6rem;
+                          color: #fca5a5; font-size: 0.82rem; font-family: monospace; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        total = len(pending) + len(posted) + len(failed)
+        st.markdown(f"""
+        <div class="stat-row">
+            <div class="stat-card stat-pending">
+                <div class="stat-num">{len(pending)}</div>
+                <div class="stat-label">⏳ Pending</div>
+            </div>
+            <div class="stat-card stat-posted">
+                <div class="stat-num">{len(posted)}</div>
+                <div class="stat-label">✅ Posted</div>
+            </div>
+            <div class="stat-card stat-failed">
+                <div class="stat-num">{len(failed)}</div>
+                <div class="stat-label">❌ Failed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num" style="color:#818cf8;">{total}</div>
+                <div class="stat-label">📊 Total</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Action Buttons ────────────────────────────────────────────────
+        col_refresh, col_publish, col_retry_all = st.columns(3)
+        with col_refresh:
+            if st.button("🔄 Refresh", use_container_width=True):
+                st.rerun()
+        with col_publish:
+            if st.button("⚡ Publish Due Now", use_container_width=True, type="primary"):
+                with st.spinner("⚡ Publishing due posts..."):
+                    try:
+                        from modules.scheduler.auto_publisher import publish_due_posts
+                        pub, fail = publish_due_posts()
+                        if pub or fail:
+                            st.success(f"✅ Published: {pub} | Failed: {fail}")
+                        else:
+                            st.info("📭 No posts are due right now.")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ {e}")
+        with col_retry_all:
+            retry_disabled = len(failed) == 0
+            if st.button(f"🔄 Retry All Failed ({len(failed)})", use_container_width=True,
+                         disabled=retry_disabled):
+                with st.spinner("🔄 Retrying all failed posts..."):
+                    try:
+                        count = retry_all_failed()
+                        st.success(f"✅ Reset {count} post(s) to pending — they'll publish shortly")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ {e}")
+
+        st.markdown("---")
+
+        # ── Helper: time ago ──────────────────────────────────────────────
+        def _time_ago(iso_string):
+            if not iso_string:
+                return ""
+            try:
+                dt = _parse_dt(iso_string)
+                if dt.tzinfo is None:
+                    dt = pytz.utc.localize(dt)
+                now = datetime.now(pytz.utc)
+                diff = now - dt
+                secs = int(diff.total_seconds())
+                if secs < 0:
+                    secs = abs(secs)
+                    if secs < 60: return f"in {secs}s"
+                    elif secs < 3600: return f"in {secs // 60}m"
+                    elif secs < 86400: return f"in {secs // 3600}h"
+                    else: return f"in {secs // 86400}d"
+                if secs < 60: return f"{secs}s ago"
+                elif secs < 3600: return f"{secs // 60}m ago"
+                elif secs < 86400: return f"{secs // 3600}h ago"
+                else: return f"{secs // 86400}d ago"
+            except Exception:
+                return ""
+
+        # ── Helper: render a post card ────────────────────────────────────
+        def _render_post(post, status_type):
+            platform = post.get("platform", "unknown")
+            icon = PLATFORM_ICONS.get(platform, "📝")
+            label = PLATFORM_LABELS.get(platform, platform)
+            caption = post.get("caption") or "(no caption)"
+            tw_acct = post.get("twitter_account", "")
+            ig_acct = post.get("instagram_account", "")
+            acct_name = tw_acct or ig_acct or ""
+            video_url = post.get("video_url")
+            sched_time = post.get("scheduled_time")
+            posted_at = post.get("posted_at")
+            error_msg = post.get("error_message")
+
+            card_class = f"post-card post-card-{status_type}"
+
+            meta_parts = []
+            if acct_name:
+                meta_parts.append(f"👤 {acct_name}")
+            if sched_time:
+                ago = _time_ago(sched_time)
+                meta_parts.append(f"📅 {format_time_ist(sched_time)}" + (f" ({ago})" if ago else ""))
+            if posted_at and status_type == "posted":
+                meta_parts.append(f"✅ Posted: {format_time_ist(posted_at)}")
+            if video_url:
+                meta_parts.append("🎥 Has video")
+
+            meta_html = " &nbsp;·&nbsp; ".join(meta_parts)
+            caption_display = caption[:200] + ("…" if len(caption) > 200 else "")
+
+            html = (
+                f'<div class="{card_class}">'
+                f'<div class="post-platform">{icon} {label}</div>'
+                f'<div class="post-caption">{caption_display}</div>'
+                f'<div class="post-meta">{meta_html}</div>'
+            )
+            if error_msg and status_type == "failed":
+                html += f'<div class="post-error">⚠️ {error_msg}</div>'
+            html += '</div>'
+            st.markdown(html, unsafe_allow_html=True)
+
+        # ── Tabs ──────────────────────────────────────────────────────────
+        tab_pending, tab_posted, tab_failed = st.tabs([
+            f"⏳ Pending ({len(pending)})",
+            f"✅ Posted ({len(posted)})",
+            f"❌ Failed ({len(failed)})",
+        ])
+
+        # ── PENDING TAB ──────────────────────────────────────────────────
+        with tab_pending:
+            if pending:
+                for i, post in enumerate(pending):
+                    _render_post(post, "pending")
+                    try:
+                        _current_dt = _parse_dt(post["scheduled_time"])
+                        if _current_dt.tzinfo is None:
+                            _current_dt = pytz.utc.localize(_current_dt)
+                        _current_ist = _current_dt.astimezone(IST)
+                        _default_date = _current_ist.date()
+                        _default_time = _current_ist.time().replace(second=0, microsecond=0)
+                    except Exception:
+                        _default_date = datetime.now(IST).date()
+                        _default_time = datetime.now(IST).time().replace(second=0, microsecond=0)
+
+                    col_date, col_time, col_save, col_cancel = st.columns([2, 2, 1, 1])
+                    with col_date:
+                        new_date = st.date_input(
+                            "Date", value=_default_date,
+                            key=f"sched_date_{post['id']}", label_visibility="collapsed",
+                        )
+                    with col_time:
+                        new_time = st.time_input(
+                            "Time (IST)", value=_default_time,
+                            key=f"sched_time_{post['id']}", step=timedelta(minutes=30),
+                            label_visibility="collapsed",
+                        )
+                    with col_save:
+                        if st.button("⏰ Set", key=f"resched_{post['id']}", type="primary"):
+                            try:
+                                new_dt = IST.localize(datetime.combine(new_date, new_time))
+                                update_schedule_time(post["id"], new_dt)
+                                st.success(f"✅ → {new_dt.strftime('%b %d, %I:%M %p IST')}")
+                                time.sleep(0.5); st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed: {e}")
+                    with col_cancel:
+                        if st.button("🗑️ Cancel", key=f"cancel_{post['id']}"):
+                            try:
+                                delete_schedule(post["id"])
+                                st.success("Cancelled"); time.sleep(0.5); st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed: {e}")
+            else:
+                st.info("📭 No pending scheduled posts.")
+
+        # ── POSTED TAB ───────────────────────────────────────────────────
+        with tab_posted:
+            if posted:
+                for post in posted:
+                    _render_post(post, "posted")
+                    col_del, _ = st.columns([1, 5])
+                    with col_del:
+                        if st.button("🗑️ Remove", key=f"del_posted_{post['id']}",
+                                     help="Remove from history"):
+                            delete_schedule(post["id"]); st.rerun()
+            else:
+                st.info("📭 No posted items yet.")
+
+        # ── FAILED TAB ───────────────────────────────────────────────────
+        with tab_failed:
+            if failed:
+                for post in failed:
+                    _render_post(post, "failed")
+                    col_retry, col_del, _ = st.columns([1, 1, 4])
+                    with col_retry:
+                        if st.button("🔄 Retry Now", key=f"retry_{post['id']}", type="primary"):
+                            try:
+                                retry_failed(post["id"])
+                                st.success("✅ Reset to pending — will publish in ~2 min")
+                                time.sleep(0.5); st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed: {e}")
+                    with col_del:
+                        if st.button("🗑️ Delete", key=f"del_failed_{post['id']}"):
+                            try:
+                                delete_schedule(post["id"])
+                                st.success("Deleted"); time.sleep(0.5); st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed: {e}")
+            else:
+                st.info("🎉 No failed items!")
+
+    except Exception as e:
+        st.warning(f"⚠️ Schedule Manager unavailable: {e}")
+        st.caption("Make sure the `content_schedule` table exists in your Supabase project.")
+
+
         import pytz
         IST = pytz.timezone("Asia/Kolkata")
 

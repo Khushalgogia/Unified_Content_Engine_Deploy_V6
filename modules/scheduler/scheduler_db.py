@@ -290,3 +290,59 @@ def format_time_ist(iso_string):
     except Exception:
         return str(iso_string)[:16]
 
+
+def retry_failed(post_id, new_time=None):
+    """
+    Reset a failed post back to 'pending' so it will be retried.
+
+    Args:
+        post_id: The ID of the failed post.
+        new_time: Optional new scheduled_time (datetime, tz-aware).
+                  If None, schedules for 2 minutes from now.
+    """
+    client = _get_client()
+    if new_time is None:
+        from datetime import timedelta
+        new_time = datetime.now(timezone.utc) + timedelta(minutes=2)
+
+    client.table(TABLE_NAME).update({
+        "status": "pending",
+        "error_message": None,
+        "scheduled_time": new_time.isoformat(),
+    }).eq("id", post_id).execute()
+    print(f"   🔄 Retrying #{post_id} → {new_time.strftime('%Y-%m-%d %H:%M')}")
+
+
+def retry_all_failed():
+    """
+    Reset ALL failed posts back to 'pending' for retry.
+    Each post is scheduled 2 minutes apart starting from now.
+
+    Returns:
+        int: Number of posts reset.
+    """
+    client = _get_client()
+    from datetime import timedelta
+
+    result = (
+        client.table(TABLE_NAME)
+        .select("id")
+        .eq("status", "failed")
+        .order("scheduled_time", desc=False)
+        .execute()
+    )
+    failed_posts = result.data or []
+
+    now = datetime.now(timezone.utc)
+    for i, post in enumerate(failed_posts):
+        new_time = now + timedelta(minutes=2 * (i + 1))
+        client.table(TABLE_NAME).update({
+            "status": "pending",
+            "error_message": None,
+            "scheduled_time": new_time.isoformat(),
+        }).eq("id", post["id"]).execute()
+
+    if failed_posts:
+        print(f"   🔄 Reset {len(failed_posts)} failed post(s) to pending")
+    return len(failed_posts)
+
