@@ -403,5 +403,20 @@
   "alignment": "left",
   "font_weight": "medium",
   "padding": 18
+},
+  "monkey.mp4": {
+  "text_area": {
+    "x": 55,
+    "y": 1064,
+    "width": 983,
+    "height": 456
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 74,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
 }
 }
