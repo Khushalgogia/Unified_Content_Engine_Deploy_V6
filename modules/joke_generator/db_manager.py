@@ -9,11 +9,15 @@ from supabase import create_client
 
 def get_supabase_client():
     """Get Supabase client."""
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv("SUPABASE_KEY", "").strip()
 
     if not url or not key:
         raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+
+    # Validate URL format
+    if not url.startswith("https://"):
+        raise ValueError(f"SUPABASE_URL must start with https:// — got: {url[:30]}...")
 
     return create_client(url, key)
 
@@ -71,15 +75,20 @@ def search_by_bridge(query_embedding: list, match_count: int = 10):
     """Search jokes by bridge embedding similarity."""
     supabase = get_supabase_client()
 
-    result = supabase.rpc(
-        'match_joke_bridges',
-        {
-            'query_embedding': query_embedding,
-            'match_count': match_count
-        }
-    ).execute()
-
-    return result.data
+    try:
+        result = supabase.rpc(
+            'match_joke_bridges',
+            {
+                'query_embedding': query_embedding,
+                'match_count': match_count
+            }
+        ).execute()
+        return result.data
+    except Exception as e:
+        url = os.getenv("SUPABASE_URL", "")
+        print(f"   ⚠️ RPC call failed. SUPABASE_URL starts with: '{url[:35]}...'")
+        print(f"   ⚠️ Error type: {type(e).__name__}: {e}")
+        raise
 
 
 def check_bridge_column_exists():

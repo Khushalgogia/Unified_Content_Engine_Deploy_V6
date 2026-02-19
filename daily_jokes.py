@@ -32,6 +32,14 @@ if __name__ == "__main__":
 
     print(f"🚀 Daily Jokes Pipeline")
     print(f"   Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+
+    # Quick env check
+    import os
+    supa_url = os.getenv("SUPABASE_URL", "")
+    supa_key = os.getenv("SUPABASE_KEY", "")
+    print(f"   SUPABASE_URL: {'✅' if supa_url.startswith('https://') else '❌ MISSING/INVALID'} (len={len(supa_url)})")
+    print(f"   SUPABASE_KEY: {'✅' if len(supa_key) > 20 else '❌ MISSING/SHORT'} (len={len(supa_key)})")
+    print(f"   OPENAI_API_KEY: {'✅' if os.getenv('OPENAI_API_KEY') else '❌ MISSING'}")
     print()
 
     from modules.news_workflow.morning_jokes_generator import run_daily_pipeline

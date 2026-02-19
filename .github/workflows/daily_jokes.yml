@@ -20,6 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install gnews openai google-genai supabase requests python-dotenv
+          python -c "import supabase; print(f'supabase version: {supabase.__version__}')" || true
 
       - name: Run Daily Jokes Pipeline
         env:
