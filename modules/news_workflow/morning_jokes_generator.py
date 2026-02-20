@@ -29,7 +29,7 @@ def run_daily_pipeline():
     print()
     print("=" * 60)
     print("🎭 MORNING JOKES GENERATOR")
-    print("   5 Headlines × ~10 Best Bridges = ~50 Quality Jokes")
+    print("   10 Headlines × ~10 Best Bridges = ~100 Quality Jokes")
     print("=" * 60)
     print()
 

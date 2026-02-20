@@ -1533,16 +1533,16 @@ elif page == "📰 Daily News Jokes":
         for idx, headline in enumerate(st.session_state.news_headlines):
             with st.spinner(f"🔍 [{idx+1}/{len(st.session_state.news_headlines)}] Searching bridges for: {headline[:50]}..."):
                 try:
-                    matches = search_bridges(headline, top_k=20)
+                    matches = search_bridges(headline, top_k=15)
                     log_lines.append(f"\n🔍 Headline {idx+1}: \"{headline}\" → {len(matches)} bridges found")
                 except Exception as e:
                     log_lines.append(f"\n❌ Search failed for '{headline}': {e}")
                     all_jokes[headline] = []
                     continue
 
-            with st.spinner(f"🔥 [{idx+1}/{len(st.session_state.news_headlines)}] Generating 20 jokes for: {headline[:50]}..."):
+            with st.spinner(f"🔥 [{idx+1}/{len(st.session_state.news_headlines)}] Generating 10 jokes for: {headline[:50]}..."):
                 try:
-                    jokes = generate_from_selected(headline, matches[:20])
+                    jokes = generate_from_selected(headline, matches[:10])
                     all_jokes[headline] = jokes
                     log_lines.append(f"   ✅ Generated {len(jokes)} jokes")
                 except Exception as e:
