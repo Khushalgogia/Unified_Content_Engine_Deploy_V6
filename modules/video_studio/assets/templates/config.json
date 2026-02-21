@@ -418,5 +418,200 @@
   "alignment": "left",
   "font_weight": "medium",
   "padding": 20
+},
+  "anime_vegetable_cut.mp4": {
+  "text_area": {
+    "x": 67,
+    "y": 1221,
+    "width": 960,
+    "height": 310
+  },
+  "font": "Verdana-Regular.ttf",
+  "font_size": 68,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "anime_rain.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "peaky_blinders.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "sigma.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "sky.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "train_ride.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "minecraft.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "subway_surfer.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1228,
+    "width": 947,
+    "height": 317
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 70,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "gta_reel.mp4": {
+  "text_area": {
+    "x": 80,
+    "y": 1100,
+    "width": 924,
+    "height": 323
+  },
+  "font": "TrebuchetMS-Regular.ttf",
+  "font_size": 69,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "mumbai_reel.mp4": {
+  "text_area": {
+    "x": 24,
+    "y": 1136,
+    "width": 1035,
+    "height": 346
+  },
+  "font": "Verdana-Regular.ttf",
+  "font_size": 67,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "traffic_reel.mp4": {
+  "text_area": {
+    "x": 24,
+    "y": 1136,
+    "width": 1035,
+    "height": 346
+  },
+  "font": "Verdana-Regular.ttf",
+  "font_size": 67,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "india_flag.mp4": {
+  "text_area": {
+    "x": 24,
+    "y": 1136,
+    "width": 1035,
+    "height": 346
+  },
+  "font": "Verdana-Regular.ttf",
+  "font_size": 67,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
+},
+  "food.mp4": {
+  "text_area": {
+    "x": 24,
+    "y": 1136,
+    "width": 1035,
+    "height": 346
+  },
+  "font": "Verdana-Regular.ttf",
+  "font_size": 67,
+  "color": "#000000",
+  "shadow": null,
+  "alignment": "left",
+  "font_weight": "medium",
+  "padding": 20
 }
 }
