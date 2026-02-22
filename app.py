@@ -1632,6 +1632,20 @@ elif page == "🐦 Tweet Reply Studio":
     with tab_trending:
         st.markdown("Load the latest AI-generated jokes based on today's trending tweets.")
 
+        # Account selector — AT THE TOP so user always sees it
+        try:
+            from modules.twitter.twitter_client import get_available_accounts
+            available_accounts = get_available_accounts()
+        except Exception:
+            available_accounts = ["account_1"]
+
+        st.selectbox(
+            "🐦 Reply from account",
+            options=available_accounts,
+            key="reply_account",
+        )
+        st.markdown("---")
+
         try:
             from modules.news_workflow.twitter_trends_fetcher import load_latest_results
 
@@ -1737,19 +1751,7 @@ elif page == "🐦 Tweet Reply Studio":
                                     st.error(f"Schedule error: {e}")
 
                 # Account selector for replies
-                st.markdown("---")
-                st.markdown("#### ⚙️ Reply Account")
-                try:
-                    from modules.twitter.twitter_client import get_available_accounts
-                    available_accounts = get_available_accounts()
-                except Exception:
-                    available_accounts = ["account_1"]
 
-                reply_acct = st.selectbox(
-                    "Select Twitter account for replies",
-                    options=available_accounts,
-                    key="reply_account",
-                )
             else:
                 st.info("📭 No trending tweet jokes generated yet. Run the daily pipeline first from **📰 Daily News Jokes** or wait for the next automated run.")
 
@@ -1759,6 +1761,20 @@ elif page == "🐦 Tweet Reply Studio":
     # ── TAB 2: MANUAL SEARCH ─────────────────────────────────────────────
     with tab_manual:
         st.markdown("Search for any tweet and compose a reply directly.")
+
+        # Account selector — AT THE TOP so user always sees it
+        try:
+            from modules.twitter.twitter_client import get_available_accounts
+            available_accounts_m = get_available_accounts()
+        except Exception:
+            available_accounts_m = ["account_1"]
+
+        st.selectbox(
+            "🐦 Reply from account",
+            options=available_accounts_m,
+            key="reply_account_manual",
+        )
+        st.markdown("---")
 
         # Search bar
         search_query = st.text_input("🔍 Search tweets", placeholder="e.g., Modi, IPL, Tesla, UFC...",
@@ -1862,18 +1878,7 @@ elif page == "🐦 Tweet Reply Studio":
 
                 st.markdown("---")
 
-            # Account selector for manual replies
-            try:
-                from modules.twitter.twitter_client import get_available_accounts
-                available_accounts = get_available_accounts()
-            except Exception:
-                available_accounts = ["account_1"]
 
-            st.selectbox(
-                "Reply account",
-                options=available_accounts,
-                key="reply_account_manual",
-            )
 
 
 # ─── Footer ──────────────────────────────────────────────────────────────────
