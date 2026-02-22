@@ -344,6 +344,18 @@ def publish_due_posts():
         instagram_account = post.get("instagram_account", "khushal_page")
         reply_to_tweet_id = post.get("reply_to_tweet_id")
 
+        # ── Atomic claim: mark as 'publishing' to prevent double-publish ──
+        claim_result = (
+            supabase.table(TABLE_NAME)
+            .update({"status": "publishing"})
+            .eq("id", post_id)
+            .eq("status", "pending")  # Only claim if still pending
+            .execute()
+        )
+        if not claim_result.data:
+            logger.info(f"⏭️ Post #{post_id} already claimed by another publisher")
+            continue
+
         video_path = None
 
         try:
@@ -386,7 +398,7 @@ def publish_due_posts():
             supabase.table(TABLE_NAME).update({
                 "status": "failed",
                 "error_message": str(e)[:500],
-            }).eq("id", post_id).execute()
+            }).eq("id", post_id).eq("status", "publishing").execute()
             failed += 1
 
         finally:

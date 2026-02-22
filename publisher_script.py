@@ -368,6 +368,18 @@ def publish_pending_posts():
         twitter_account = post.get("twitter_account", "account_1")
         instagram_account = post.get("instagram_account", "khushal_page")
 
+        # ── Atomic claim: mark as 'publishing' to prevent double-publish ──
+        claim_result = (
+            supabase.table(TABLE_NAME)
+            .update({"status": "publishing"})
+            .eq("id", post_id)
+            .eq("status", "pending")  # Only claim if still pending
+            .execute()
+        )
+        if not claim_result.data:
+            print(f"   ⏭️ Post #{post_id} already claimed by another publisher — skipping")
+            continue
+
         print(f"{'='*50}")
         print(f"📋 Post #{post_id} — {platform}")
         print(f"   Caption: {caption[:80]}{'...' if len(caption) > 80 else ''}")
@@ -415,7 +427,7 @@ def publish_pending_posts():
             supabase.table(TABLE_NAME).update({
                 "status": "failed",
                 "error_message": str(e)[:500],
-            }).eq("id", post_id).execute()
+            }).eq("id", post_id).eq("status", "publishing").execute()
 
         finally:
             # Clean up temp file
