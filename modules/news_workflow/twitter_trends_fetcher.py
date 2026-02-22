@@ -18,7 +18,7 @@ import urllib.request
 import urllib.parse
 import ssl
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Ensure project root is on sys.path
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent)
@@ -137,11 +137,39 @@ def fetch_trending_topics():
 
 # ─── Tweet Search ─────────────────────────────────────────────────────────────
 
-def search_tweets_for_trend(query, count=10, _retries=3):
+def _parse_tweet_time(created_at_str):
+    """Parse tweet timestamp and return (datetime_obj, human_readable_age)."""
+    if not created_at_str:
+        return None, ""
+    try:
+        # Twitter format: "Mon Feb 22 10:30:00 +0000 2026"
+        dt = datetime.strptime(created_at_str, "%a %b %d %H:%M:%S %z %Y")
+        now = datetime.now(timezone.utc)
+        diff = now - dt
+        secs = int(diff.total_seconds())
+        if secs < 0:
+            return dt, "just now"
+        elif secs < 60:
+            return dt, f"{secs}s ago"
+        elif secs < 3600:
+            return dt, f"{secs // 60}m ago"
+        elif secs < 86400:
+            return dt, f"{secs // 3600}h ago"
+        else:
+            days = secs // 86400
+            return dt, f"{days}d ago"
+    except Exception:
+        return None, ""
+
+
+def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
     """
     Search for top tweets about a trending topic.
     Returns list of tweet dicts with id, text, author, likes, retweets, url.
     Retries automatically on 429 (rate limit) with exponential backoff.
+
+    Args:
+        max_age_hours: If set, only return tweets newer than this many hours.
     """
     time.sleep(RATE_LIMIT_DELAY)
 
@@ -155,19 +183,31 @@ def search_tweets_for_trend(query, count=10, _retries=3):
         wait = RATE_LIMIT_DELAY * (4 - _retries)  # 6s, 12s, 18s backoff
         print(f"   ⏳ Rate limited (429), waiting {wait}s before retry ({_retries} left)...")
         time.sleep(wait)
-        return search_tweets_for_trend(query, count=count, _retries=_retries - 1)
+        return search_tweets_for_trend(query, count=count, max_age_hours=max_age_hours, _retries=_retries - 1)
 
     if status != 200 or not isinstance(data, dict):
         print(f"   ❌ Search failed for '{query[:60]}' (HTTP {status})")
         return []
 
     raw_tweets = data.get("tweets", [])
+    cutoff = None
+    if max_age_hours:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+
     tweets = []
 
-    for t in raw_tweets[:count]:
+    for t in raw_tweets[:count * 2]:  # fetch extra to compensate for filtering
         author = t.get("author", {})
         username = author.get("userName", "unknown") if isinstance(author, dict) else "unknown"
         tweet_id = t.get("id", "")
+        created_at = t.get("createdAt", "")
+
+        # Parse and compute age
+        tweet_dt, tweet_age = _parse_tweet_time(created_at)
+
+        # Filter by recency if cutoff is set
+        if cutoff and tweet_dt and tweet_dt < cutoff:
+            continue
 
         tweets.append({
             "id": str(tweet_id),
@@ -178,8 +218,12 @@ def search_tweets_for_trend(query, count=10, _retries=3):
             "retweets": t.get("retweetCount", 0),
             "views": t.get("viewCount", 0),
             "url": f"https://x.com/{username}/status/{tweet_id}",
-            "created_at": t.get("createdAt", ""),
+            "created_at": created_at,
+            "tweet_age": tweet_age,  # human-readable, e.g. "2h ago"
         })
+
+        if len(tweets) >= count:
+            break
 
     return tweets
 
@@ -374,7 +418,7 @@ def run_twitter_pipeline():
 
     for t in trends:
         print(f"\n   Searching: {t['name']}...")
-        tweets = search_tweets_for_trend(t["query"], count=5)
+        tweets = search_tweets_for_trend(t["query"], count=5, max_age_hours=48)
         if tweets:
             best = _pick_best_tweet(tweets, t["source"])
             if best:
@@ -487,8 +531,9 @@ def load_latest_results():
 def search_tweets_manual(query, count=10):
     """
     Manual search for Streamlit Tab 2. Returns top tweets sorted by engagement.
+    Limited to last 7 days to ensure relevance.
     """
-    tweets = search_tweets_for_trend(query, count=count)
+    tweets = search_tweets_for_trend(query, count=count, max_age_hours=168)  # 7 days
     return sorted(tweets, key=lambda t: t.get("likes", 0) + t.get("retweets", 0) * 3, reverse=True)
 
 

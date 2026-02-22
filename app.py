@@ -1677,7 +1677,8 @@ elif page == "🐦 Tweet Reply Studio":
                             <div class="tweet-stats">
                                 ❤️ {tweet.get('likes', 0):,} &nbsp;·&nbsp;
                                 🔁 {tweet.get('retweets', 0):,} &nbsp;·&nbsp;
-                                👁️ {tweet.get('views', 0):,}
+                        👁️ {tweet.get('views', 0):,} &nbsp;·&nbsp;
+                                🕐 {tweet.get('tweet_age', '')}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
