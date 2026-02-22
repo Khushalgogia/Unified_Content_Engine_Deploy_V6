@@ -341,6 +341,7 @@ PAGES = [
     "🐦 Post to Twitter",
     "📅 Schedule Manager",
     "📰 Daily News Jokes",
+    "🐦 Tweet Reply Studio",
 ]
 
 with st.sidebar:
@@ -1036,7 +1037,7 @@ elif page == "📅 Schedule Manager":
     <div class="section-header">
         <span class="icon">📋</span>
         <span class="label">Schedule Manager</span>
-        <span class="desc">View and manage all scheduled, posted, and failed content</span>
+        <span class="desc">Platform → Account → Timeline view of all scheduled content</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1074,67 +1075,98 @@ elif page == "📅 Schedule Manager":
             "twitter_video": "Tweet (Video)",
         }
 
-        pending = get_all_scheduled(status="pending")
-        posted  = get_all_scheduled(status="posted")
-        failed  = get_all_scheduled(status="failed")
+        # ── Fetch all data once ──────────────────────────────────────────
+        all_posts = get_all_scheduled()
 
-        pending.sort(key=lambda p: p.get("scheduled_time", ""))
-        posted.sort(key=lambda p: p.get("posted_at", ""), reverse=True)
-        failed.sort(key=lambda p: p.get("scheduled_time", ""), reverse=True)
+        all_pending = [p for p in all_posts if p.get("status") == "pending"]
+        all_posted = [p for p in all_posts if p.get("status") == "posted"]
+        all_failed = [p for p in all_posts if p.get("status") == "failed"]
 
-        # ── Summary Stats Bar ─────────────────────────────────────────────
+        # ── Extra CSS for new UI ─────────────────────────────────────────
         st.markdown("""
         <style>
-            .stat-row { display: flex; gap: 1rem; margin: 0.8rem 0 1.2rem 0; }
-            .stat-card {
-                flex: 1; padding: 1rem 1.4rem; border-radius: 12px;
+            .next-up-card {
+                background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.1));
+                border: 2px solid rgba(139,92,246,0.4);
+                border-radius: 16px;
+                padding: 20px 24px;
+                margin: 12px 0;
+            }
+            .next-up-card .next-label {
+                color: #a78bfa;
+                font-size: 0.75rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .next-up-card .next-caption {
+                color: #e2e8f0;
+                font-size: 1rem;
+                line-height: 1.5;
+                margin: 8px 0;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+            .next-up-card .next-meta {
+                color: #94a3b8;
+                font-size: 0.85rem;
+                margin-top: 8px;
+            }
+            .countdown {
+                color: #a78bfa;
+                font-size: 1.1rem;
+                font-weight: 700;
+            }
+            .queue-card {
+                background: rgba(30,30,46,0.5);
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 10px;
+                padding: 12px 16px;
+                margin: 4px 0;
+            }
+            .queue-card .q-platform { color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; }
+            .queue-card .q-caption { color: #e2e8f0; font-size: 0.9rem; margin: 4px 0; }
+            .queue-card .q-meta { color: #64748b; font-size: 0.78rem; }
+            .history-card {
+                background: rgba(255,255,255,0.02);
+                border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 8px;
+                padding: 10px 14px;
+                margin: 3px 0;
+            }
+            .history-card.posted { border-left: 3px solid #10b981; }
+            .history-card.failed { border-left: 3px solid #ef4444; }
+            .acct-stats {
+                display: flex; gap: 1rem; margin: 0.5rem 0 1rem 0;
+            }
+            .acct-stat {
+                padding: 0.5rem 1rem; border-radius: 8px;
                 background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-                text-align: center;
+                text-align: center; font-size: 0.8rem; color: #94a3b8;
             }
-            .stat-num { font-size: 2rem; font-weight: 800; line-height: 1.2; }
-            .stat-label { font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-            .stat-pending .stat-num { color: #facc15; }
-            .stat-posted .stat-num  { color: #10b981; }
-            .stat-failed .stat-num  { color: #ef4444; }
-            .post-card {
-                background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 0.2rem;
+            .acct-stat .num { font-size: 1.3rem; font-weight: 700; display: block; }
+            .acct-stat .num.pending { color: #facc15; }
+            .acct-stat .num.posted { color: #10b981; }
+            .acct-stat .num.failed { color: #ef4444; }
+            .reply-badge {
+                display: inline-block; background: rgba(29,161,242,0.15);
+                color: #1da1f2; padding: 2px 8px; border-radius: 10px;
+                font-size: 0.7rem; font-weight: 600; margin-left: 6px;
             }
-            .post-card-failed  { border-color: rgba(239,68,68,0.25); }
-            .post-card-posted  { border-color: rgba(16,185,129,0.2); }
-            .post-card-pending { border-color: rgba(250,204,21,0.2); }
-            .post-platform { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 0.3rem; }
-            .post-caption { color: #e2e8f0; font-size: 0.92rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
-            .post-meta { color: #64748b; font-size: 0.78rem; margin-top: 0.5rem; }
-            .post-error { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2);
-                          border-radius: 8px; padding: 0.6rem 0.8rem; margin-top: 0.6rem;
-                          color: #fca5a5; font-size: 0.82rem; font-family: monospace; }
         </style>
         """, unsafe_allow_html=True)
 
-        total = len(pending) + len(posted) + len(failed)
+        # ── Global Summary Bar ───────────────────────────────────────────
         st.markdown(f"""
-        <div class="stat-row">
-            <div class="stat-card stat-pending">
-                <div class="stat-num">{len(pending)}</div>
-                <div class="stat-label">⏳ Pending</div>
-            </div>
-            <div class="stat-card stat-posted">
-                <div class="stat-num">{len(posted)}</div>
-                <div class="stat-label">✅ Posted</div>
-            </div>
-            <div class="stat-card stat-failed">
-                <div class="stat-num">{len(failed)}</div>
-                <div class="stat-label">❌ Failed</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-num" style="color:#818cf8;">{total}</div>
-                <div class="stat-label">📊 Total</div>
-            </div>
+        <div class="acct-stats">
+            <div class="acct-stat"><span class="num pending">{len(all_pending)}</span>⏳ Pending</div>
+            <div class="acct-stat"><span class="num posted">{len(all_posted)}</span>✅ Posted</div>
+            <div class="acct-stat"><span class="num failed">{len(all_failed)}</span>❌ Failed</div>
+            <div class="acct-stat"><span class="num" style="color:#818cf8;">{len(all_posts)}</span>📊 Total</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Action Buttons ────────────────────────────────────────────────
+        # ── Global Action Buttons ────────────────────────────────────────
         col_refresh, col_publish, col_retry_all = st.columns(3)
         with col_refresh:
             if st.button("🔄 Refresh", use_container_width=True):
@@ -1154,8 +1186,8 @@ elif page == "📅 Schedule Manager":
                     except Exception as e:
                         st.error(f"❌ {e}")
         with col_retry_all:
-            retry_disabled = len(failed) == 0
-            if st.button(f"🔄 Retry All Failed ({len(failed)})", use_container_width=True,
+            retry_disabled = len(all_failed) == 0
+            if st.button(f"🔄 Retry All Failed ({len(all_failed)})", use_container_width=True,
                          disabled=retry_disabled):
                 with st.spinner("🔄 Retrying all failed posts..."):
                     try:
@@ -1168,8 +1200,8 @@ elif page == "📅 Schedule Manager":
 
         st.markdown("---")
 
-        # ── Helper: time ago ──────────────────────────────────────────────
-        def _time_ago(iso_string):
+        # ── Helper: countdown string ─────────────────────────────────────
+        def _countdown(iso_string):
             if not iso_string:
                 return ""
             try:
@@ -1177,297 +1209,253 @@ elif page == "📅 Schedule Manager":
                 if dt.tzinfo is None:
                     dt = pytz.utc.localize(dt)
                 now = datetime.now(pytz.utc)
-                diff = now - dt
+                diff = dt - now
                 secs = int(diff.total_seconds())
-                if secs < 0:
-                    secs = abs(secs)
-                    if secs < 60: return f"in {secs}s"
-                    elif secs < 3600: return f"in {secs // 60}m"
-                    elif secs < 86400: return f"in {secs // 3600}h"
-                    else: return f"in {secs // 86400}d"
-                if secs < 60: return f"{secs}s ago"
-                elif secs < 3600: return f"{secs // 60}m ago"
-                elif secs < 86400: return f"{secs // 3600}h ago"
-                else: return f"{secs // 86400}d ago"
+                if secs <= 0:
+                    return "⚡ Due now!"
+                if secs < 60:
+                    return f"in {secs}s"
+                elif secs < 3600:
+                    return f"in {secs // 60}m"
+                elif secs < 86400:
+                    h = secs // 3600
+                    m = (secs % 3600) // 60
+                    return f"in {h}h {m}m"
+                else:
+                    return f"in {secs // 86400}d {(secs % 86400) // 3600}h"
             except Exception:
                 return ""
 
-        # ── Helper: render a post card ────────────────────────────────────
-        def _render_post(post, status_type):
-            platform = post.get("platform", "unknown")
-            icon = PLATFORM_ICONS.get(platform, "📝")
-            label = PLATFORM_LABELS.get(platform, platform)
-            caption = post.get("caption") or "(no caption)"
-            tw_acct = post.get("twitter_account", "")
-            ig_acct = post.get("instagram_account", "")
-            acct_name = tw_acct or ig_acct or ""
-            video_url = post.get("video_url")
-            sched_time = post.get("scheduled_time")
-            posted_at = post.get("posted_at")
-            error_msg = post.get("error_message")
-
-            card_class = f"post-card post-card-{status_type}"
-
-            meta_parts = []
-            if acct_name:
-                meta_parts.append(f"👤 {acct_name}")
-            if sched_time:
-                ago = _time_ago(sched_time)
-                meta_parts.append(f"📅 {format_time_ist(sched_time)}" + (f" ({ago})" if ago else ""))
-            if posted_at and status_type == "posted":
-                meta_parts.append(f"✅ Posted: {format_time_ist(posted_at)}")
-            if video_url:
-                meta_parts.append("🎥 Has video")
-
-            meta_html = " &nbsp;·&nbsp; ".join(meta_parts)
-            caption_display = caption[:200] + ("…" if len(caption) > 200 else "")
-
-            html = (
-                f'<div class="{card_class}">'
-                f'<div class="post-platform">{icon} {label}</div>'
-                f'<div class="post-caption">{caption_display}</div>'
-                f'<div class="post-meta">{meta_html}</div>'
+        # ── Helper: render account timeline ──────────────────────────────
+        def _render_account_timeline(posts, account_name, platform_prefix):
+            """Render the Next Up → Queue → History timeline for one account."""
+            pending = sorted(
+                [p for p in posts if p.get("status") == "pending"],
+                key=lambda p: p.get("scheduled_time", ""),
             )
-            if error_msg and status_type == "failed":
-                html += f'<div class="post-error">⚠️ {error_msg}</div>'
-            html += '</div>'
-            st.markdown(html, unsafe_allow_html=True)
+            posted = sorted(
+                [p for p in posts if p.get("status") == "posted"],
+                key=lambda p: p.get("posted_at", ""), reverse=True,
+            )
+            failed = sorted(
+                [p for p in posts if p.get("status") == "failed"],
+                key=lambda p: p.get("scheduled_time", ""), reverse=True,
+            )
 
-        # ── Tabs ──────────────────────────────────────────────────────────
-        tab_pending, tab_posted, tab_failed = st.tabs([
-            f"⏳ Pending ({len(pending)})",
-            f"✅ Posted ({len(posted)})",
-            f"❌ Failed ({len(failed)})",
-        ])
+            # Per-account stats
+            st.markdown(f"""
+            <div class="acct-stats">
+                <div class="acct-stat"><span class="num pending">{len(pending)}</span>Pending</div>
+                <div class="acct-stat"><span class="num posted">{len(posted)}</span>Posted</div>
+                <div class="acct-stat"><span class="num failed">{len(failed)}</span>Failed</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        # ── PENDING TAB ──────────────────────────────────────────────────
-        with tab_pending:
+            # ── 🚨 NEXT UP ──────────────────────────────────────────
             if pending:
-                for i, post in enumerate(pending):
-                    _render_post(post, "pending")
-                    try:
-                        _current_dt = _parse_dt(post["scheduled_time"])
-                        if _current_dt.tzinfo is None:
-                            _current_dt = pytz.utc.localize(_current_dt)
-                        _current_ist = _current_dt.astimezone(IST)
-                        _default_date = _current_ist.date()
-                        _default_time = _current_ist.time().replace(second=0, microsecond=0)
-                    except Exception:
-                        _default_date = datetime.now(IST).date()
-                        _default_time = datetime.now(IST).time().replace(second=0, microsecond=0)
+                next_post = pending[0]
+                plat = next_post.get("platform", "unknown")
+                icon = PLATFORM_ICONS.get(plat, "📝")
+                label = PLATFORM_LABELS.get(plat, plat)
+                caption = next_post.get("caption") or "(no caption)"
+                caption_display = caption[:300] + ("…" if len(caption) > 300 else "")
+                sched_time = format_time_ist(next_post.get("scheduled_time"))
+                cd = _countdown(next_post.get("scheduled_time"))
+                reply_id = next_post.get("reply_to_tweet_id")
+                reply_html = f'<span class="reply-badge">↩️ Reply to tweet</span>' if reply_id else ""
 
-                    col_date, col_time, col_save, col_cancel = st.columns([2, 2, 1, 1])
-                    with col_date:
-                        new_date = st.date_input(
-                            "Date", value=_default_date,
-                            key=f"sched_date_{post['id']}", label_visibility="collapsed",
-                        )
-                    with col_time:
-                        new_time = st.time_input(
-                            "Time (IST)", value=_default_time,
-                            key=f"sched_time_{post['id']}", step=timedelta(minutes=30),
-                            label_visibility="collapsed",
-                        )
-                    with col_save:
-                        if st.button("⏰ Set", key=f"resched_{post['id']}", type="primary"):
+                st.markdown(f"""
+                <div class="next-up-card">
+                    <div class="next-label">🚨 NEXT UP {reply_html}</div>
+                    <div style="color:#94a3b8;font-size:0.8rem;margin-top:4px;">{icon} {label}</div>
+                    <div class="next-caption">{caption_display}</div>
+                    <div class="next-meta">
+                        📅 {sched_time} &nbsp;•&nbsp; <span class="countdown">⏳ {cd}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Reschedule / Cancel for NEXT UP
+                try:
+                    _current_dt = _parse_dt(next_post["scheduled_time"])
+                    if _current_dt.tzinfo is None:
+                        _current_dt = pytz.utc.localize(_current_dt)
+                    _current_ist = _current_dt.astimezone(IST)
+                    _default_date = _current_ist.date()
+                    _default_time = _current_ist.time().replace(second=0, microsecond=0)
+                except Exception:
+                    _default_date = datetime.now(IST).date()
+                    _default_time = datetime.now(IST).time().replace(second=0, microsecond=0)
+
+                c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                with c1:
+                    new_date = st.date_input("Date", value=_default_date,
+                        key=f"next_date_{next_post['id']}", label_visibility="collapsed")
+                with c2:
+                    new_time = st.time_input("Time", value=_default_time,
+                        key=f"next_time_{next_post['id']}", step=timedelta(minutes=30),
+                        label_visibility="collapsed")
+                with c3:
+                    if st.button("⏰ Set", key=f"next_set_{next_post['id']}", type="primary"):
+                        try:
+                            new_dt = IST.localize(datetime.combine(new_date, new_time))
+                            update_schedule_time(next_post["id"], new_dt)
+                            st.success(f"✅ → {new_dt.strftime('%b %d, %I:%M %p IST')}")
+                            time.sleep(0.5); st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed: {e}")
+                with c4:
+                    if st.button("🗑️ Cancel", key=f"next_cancel_{next_post['id']}"):
+                        try:
+                            delete_schedule(next_post["id"])
+                            st.success("Cancelled"); time.sleep(0.5); st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed: {e}")
+
+            else:
+                st.info("📭 No upcoming posts for this account.")
+
+            # ── 📅 UPCOMING QUEUE ────────────────────────────────────
+            if len(pending) > 1:
+                st.markdown("#### 📅 Upcoming Queue")
+                for post in pending[1:]:
+                    plat = post.get("platform", "unknown")
+                    icon = PLATFORM_ICONS.get(plat, "📝")
+                    label = PLATFORM_LABELS.get(plat, plat)
+                    caption = (post.get("caption") or "")[:120]
+                    sched = format_time_ist(post.get("scheduled_time"))
+                    cd = _countdown(post.get("scheduled_time"))
+                    reply_id = post.get("reply_to_tweet_id")
+                    reply_html = f'<span class="reply-badge">↩️ Reply</span>' if reply_id else ""
+
+                    st.markdown(f"""
+                    <div class="queue-card">
+                        <div class="q-platform">{icon} {label} {reply_html}</div>
+                        <div class="q-caption">{caption}{"…" if len(post.get("caption", "")) > 120 else ""}</div>
+                        <div class="q-meta">📅 {sched} &nbsp;•&nbsp; ⏳ {cd}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    try:
+                        _dt = _parse_dt(post["scheduled_time"])
+                        if _dt.tzinfo is None:
+                            _dt = pytz.utc.localize(_dt)
+                        _ist = _dt.astimezone(IST)
+                        _dd = _ist.date()
+                        _dt_time = _ist.time().replace(second=0, microsecond=0)
+                    except Exception:
+                        _dd = datetime.now(IST).date()
+                        _dt_time = datetime.now(IST).time().replace(second=0, microsecond=0)
+
+                    qc1, qc2, qc3, qc4 = st.columns([2, 2, 1, 1])
+                    with qc1:
+                        q_date = st.date_input("Date", value=_dd,
+                            key=f"q_date_{post['id']}", label_visibility="collapsed")
+                    with qc2:
+                        q_time = st.time_input("Time", value=_dt_time,
+                            key=f"q_time_{post['id']}", step=timedelta(minutes=30),
+                            label_visibility="collapsed")
+                    with qc3:
+                        if st.button("⏰", key=f"q_set_{post['id']}"):
                             try:
-                                new_dt = IST.localize(datetime.combine(new_date, new_time))
+                                new_dt = IST.localize(datetime.combine(q_date, q_time))
                                 update_schedule_time(post["id"], new_dt)
-                                st.success(f"✅ → {new_dt.strftime('%b %d, %I:%M %p IST')}")
-                                time.sleep(0.5); st.rerun()
+                                st.success(f"✅ → {new_dt.strftime('%b %d, %I:%M %p')}"); time.sleep(0.5); st.rerun()
                             except Exception as e:
                                 st.error(f"Failed: {e}")
-                    with col_cancel:
-                        if st.button("🗑️ Cancel", key=f"cancel_{post['id']}"):
+                    with qc4:
+                        if st.button("🗑️", key=f"q_cancel_{post['id']}"):
                             try:
                                 delete_schedule(post["id"])
                                 st.success("Cancelled"); time.sleep(0.5); st.rerun()
                             except Exception as e:
                                 st.error(f"Failed: {e}")
+
+            # ── ⏪ History (collapsible) ──────────────────────────────
+            history_label = f"⏪ History ({len(posted)} posted, {len(failed)} failed)"
+            with st.expander(history_label, expanded=False):
+                if posted:
+                    st.markdown("##### ✅ Posted")
+                    for post in posted[:20]:
+                        plat = post.get("platform", "unknown")
+                        icon = PLATFORM_ICONS.get(plat, "📝")
+                        caption = (post.get("caption") or "")[:100]
+                        posted_at = format_time_ist(post.get("posted_at"))
+
+                        st.markdown(f"""
+                        <div class="history-card posted">
+                            <span style="color:#10b981;font-weight:600;">✅ {icon}</span>
+                            <span style="color:#e2e8f0;font-size:0.9rem;">{caption}{"…" if len(post.get("caption", "")) > 100 else ""}</span>
+                            <br><span style="color:#64748b;font-size:0.75rem;">📅 {posted_at}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        hc1, _ = st.columns([1, 5])
+                        with hc1:
+                            if st.button("🗑️", key=f"hdel_{post['id']}", help="Remove from history"):
+                                delete_schedule(post["id"]); st.rerun()
+
+                if failed:
+                    st.markdown("##### ❌ Failed")
+                    for post in failed[:10]:
+                        plat = post.get("platform", "unknown")
+                        icon = PLATFORM_ICONS.get(plat, "📝")
+                        caption = (post.get("caption") or "")[:100]
+                        error_msg = post.get("error_message", "Unknown error")
+
+                        st.markdown(f"""
+                        <div class="history-card failed">
+                            <span style="color:#ef4444;font-weight:600;">❌ {icon}</span>
+                            <span style="color:#e2e8f0;font-size:0.9rem;">{caption}{"…" if len(post.get("caption", "")) > 100 else ""}</span>
+                            <br><span style="color:#fca5a5;font-size:0.75rem;font-family:monospace;">⚠️ {error_msg[:150]}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        fc1, fc2, _ = st.columns([1, 1, 4])
+                        with fc1:
+                            if st.button("🔄 Retry", key=f"hretry_{post['id']}", type="primary"):
+                                try:
+                                    retry_failed(post["id"])
+                                    st.success("✅ Reset to pending"); time.sleep(0.5); st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed: {e}")
+                        with fc2:
+                            if st.button("🗑️", key=f"hfail_del_{post['id']}"):
+                                try:
+                                    delete_schedule(post["id"])
+                                    st.success("Deleted"); time.sleep(0.5); st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed: {e}")
+
+                if not posted and not failed:
+                    st.info("No history yet for this account.")
+
+        # ── Build account lists dynamically ──────────────────────────────
+        twitter_accounts = sorted({p["twitter_account"] for p in all_posts if p.get("twitter_account")})
+        instagram_accounts = sorted({p["instagram_account"] for p in all_posts if p.get("instagram_account")})
+
+        # ── Platform Tabs ────────────────────────────────────────────────
+        tab_twitter, tab_instagram = st.tabs(["🐦 Twitter", "📸 Instagram"])
+
+        with tab_twitter:
+            if not twitter_accounts:
+                st.info("No scheduled tweets for any account. Schedule a tweet from the Post to Twitter page!")
             else:
-                st.info("📭 No pending scheduled posts.")
+                account_tabs = st.tabs(twitter_accounts)
+                for account_tab, account_name in zip(account_tabs, twitter_accounts):
+                    with account_tab:
+                        account_posts = [p for p in all_posts if p.get("twitter_account") == account_name]
+                        _render_account_timeline(account_posts, account_name, "tw")
 
-        # ── POSTED TAB ───────────────────────────────────────────────────
-        with tab_posted:
-            if posted:
-                for post in posted:
-                    _render_post(post, "posted")
-                    col_del, _ = st.columns([1, 5])
-                    with col_del:
-                        if st.button("🗑️ Remove", key=f"del_posted_{post['id']}",
-                                     help="Remove from history"):
-                            delete_schedule(post["id"]); st.rerun()
+        with tab_instagram:
+            if not instagram_accounts:
+                st.info("No scheduled Instagram posts. Schedule a reel from the Post to Instagram page!")
             else:
-                st.info("📭 No posted items yet.")
-
-        # ── FAILED TAB ───────────────────────────────────────────────────
-        with tab_failed:
-            if failed:
-                for post in failed:
-                    _render_post(post, "failed")
-                    col_retry, col_del, _ = st.columns([1, 1, 4])
-                    with col_retry:
-                        if st.button("🔄 Retry Now", key=f"retry_{post['id']}", type="primary"):
-                            try:
-                                retry_failed(post["id"])
-                                st.success("✅ Reset to pending — will publish in ~2 min")
-                                time.sleep(0.5); st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed: {e}")
-                    with col_del:
-                        if st.button("🗑️ Delete", key=f"del_failed_{post['id']}"):
-                            try:
-                                delete_schedule(post["id"])
-                                st.success("Deleted"); time.sleep(0.5); st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed: {e}")
-            else:
-                st.info("🎉 No failed items!")
-
-    except Exception as e:
-        st.warning(f"⚠️ Schedule Manager unavailable: {e}")
-        st.caption("Make sure the `content_schedule` table exists in your Supabase project.")
-
-
-        import pytz
-        IST = pytz.timezone("Asia/Kolkata")
-
-        PLATFORM_ICONS = {
-            "instagram": "📸 Instagram",
-            "twitter_text": "🐦 Tweet",
-            "twitter_video": "🐦 Tweet+Video",
-        }
-
-        pending = get_all_scheduled(status="pending")
-        posted = get_all_scheduled(status="posted")
-        failed = get_all_scheduled(status="failed")
-
-        pending.sort(key=lambda p: p.get("scheduled_time", ""))
-
-        tab_pending, tab_posted, tab_failed = st.tabs([
-            f"⏳ Pending ({len(pending)})",
-            f"✅ Posted ({len(posted)})",
-            f"❌ Failed ({len(failed)})",
-        ])
-
-        with tab_pending:
-            if pending:
-                for i, post in enumerate(pending):
-                    icon_label = PLATFORM_ICONS.get(post["platform"], post["platform"])
-                    caption_preview = (post.get("caption") or "")[:80]
-                    sched_time_ist = format_time_ist(post.get("scheduled_time"))
-                    tw_acct = post.get("twitter_account", "")
-                    ig_acct = post.get("instagram_account", "")
-                    acct_label = f" (@{tw_acct})" if tw_acct else (f" ({ig_acct})" if ig_acct else "")
-
-                    from dateutil.parser import parse as _parse_dt
-                    try:
-                        _current_dt = _parse_dt(post["scheduled_time"])
-                        if _current_dt.tzinfo is None:
-                            _current_dt = pytz.utc.localize(_current_dt)
-                        _current_ist = _current_dt.astimezone(IST)
-                        _default_date = _current_ist.date()
-                        _default_time = _current_ist.time().replace(second=0, microsecond=0)
-                    except Exception:
-                        from datetime import datetime as _dt
-                        _default_date = _dt.now(IST).date()
-                        _default_time = _dt.now(IST).time().replace(second=0, microsecond=0)
-
-                    st.markdown(
-                        f'<div class="schedule-card">'
-                        f'<div><strong>{icon_label}{acct_label}</strong><br>'
-                        f'<span style="color:#94a3b8;font-size:0.85rem;">{caption_preview}...</span></div>'
-                        f'<div><span class="status-scheduled">📅 {sched_time_ist}</span></div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    col_date, col_time, col_save, col_cancel = st.columns([2, 2, 1, 1])
-
-                    with col_date:
-                        new_date = st.date_input(
-                            "Date",
-                            value=_default_date,
-                            key=f"sched_date_{post['id']}",
-                            label_visibility="collapsed",
-                        )
-
-                    with col_time:
-                        new_time = st.time_input(
-                            "Time (IST)",
-                            value=_default_time,
-                            key=f"sched_time_{post['id']}",
-                            step=timedelta(minutes=30),
-                            label_visibility="collapsed",
-                        )
-
-                    with col_save:
-                        if st.button("⏰ Set", key=f"resched_{post['id']}", type="primary"):
-                            try:
-                                new_dt = IST.localize(
-                                    datetime.combine(new_date, new_time)
-                                )
-                                update_schedule_time(post["id"], new_dt)
-                                st.success(f"✅ → {new_dt.strftime('%b %d, %I:%M %p IST')}")
-                                time.sleep(0.5)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed: {e}")
-
-                    with col_cancel:
-                        if st.button("❌ Cancel", key=f"cancel_{post['id']}"):
-                            try:
-                                delete_schedule(post["id"])
-                                st.success("Cancelled")
-                                time.sleep(0.5)
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed: {e}")
-            else:
-                st.info("No pending scheduled posts.")
-
-        with tab_posted:
-            if posted:
-                for post in posted:
-                    icon_label = PLATFORM_ICONS.get(post["platform"], post["platform"])
-                    caption_preview = (post.get("caption") or "")[:80]
-                    posted_time_ist = format_time_ist(post.get("posted_at"))
-                    tw_acct = post.get("twitter_account", "")
-                    acct_label = f" (@{tw_acct})" if tw_acct else ""
-
-                    st.markdown(
-                        f'<div class="schedule-card" style="border-color: rgba(16, 185, 129, 0.2);">'
-                        f'<div><strong>{icon_label}{acct_label}</strong><br>'
-                        f'<span style="color:#94a3b8;font-size:0.85rem;">{caption_preview}...</span></div>'
-                        f'<div><span class="status-ok">✅ {posted_time_ist}</span></div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-            else:
-                st.info("No posted items yet.")
-
-        with tab_failed:
-            if failed:
-                for post in failed:
-                    icon_label = PLATFORM_ICONS.get(post["platform"], post["platform"])
-                    caption_preview = (post.get("caption") or "")[:80]
-                    error_msg = post.get("error_message", "Unknown error")
-                    tw_acct = post.get("twitter_account", "")
-                    acct_label = f" (@{tw_acct})" if tw_acct else ""
-                    failed_time_ist = format_time_ist(post.get("scheduled_time"))
-
-                    st.markdown(
-                        f'<div class="schedule-card" style="border-color: rgba(239, 68, 68, 0.2);">'
-                        f'<div><strong>{icon_label}{acct_label}</strong><br>'
-                        f'<span style="color:#94a3b8;font-size:0.85rem;">{caption_preview}...</span></div>'
-                        f'<div><span class="status-error">❌ {failed_time_ist}</span></div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                    with st.expander("Error details"):
-                        st.code(error_msg)
-            else:
-                st.info("No failed items. 🎉")
+                ig_tabs = st.tabs(instagram_accounts)
+                for ig_tab, ig_name in zip(ig_tabs, instagram_accounts):
+                    with ig_tab:
+                        ig_posts = [p for p in all_posts if p.get("instagram_account") == ig_name]
+                        _render_account_timeline(ig_posts, ig_name, "ig")
 
     except Exception as e:
         st.warning(f"⚠️ Schedule Manager unavailable: {e}")
@@ -1598,6 +1586,294 @@ elif page == "📰 Daily News Jokes":
                 <span class="title">{i}. {headline}</span>
             </div>
             """, unsafe_allow_html=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PAGE: TWEET REPLY STUDIO
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+elif page == "🐦 Tweet Reply Studio":
+    st.markdown("""
+    <div class="section-header">
+        <span class="icon">🐦</span>
+        <span class="label">Tweet Reply Studio</span>
+        <span class="desc">Reply to trending tweets with AI-generated jokes or custom replies</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Extra CSS for this page
+    st.markdown("""
+    <style>
+        .tweet-card {
+            background: rgba(29,161,242,0.06); border: 1px solid rgba(29,161,242,0.2);
+            border-radius: 14px; padding: 16px 20px; margin: 8px 0;
+        }
+        .tweet-card .tweet-author { color: #1da1f2; font-weight: 700; font-size: 0.9rem; }
+        .tweet-card .tweet-handle { color: #64748b; font-size: 0.8rem; }
+        .tweet-card .tweet-text { color: #e2e8f0; font-size: 0.95rem; margin: 8px 0; line-height: 1.5; }
+        .tweet-card .tweet-stats { color: #64748b; font-size: 0.78rem; }
+        .joke-reply-card {
+            background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.2);
+            border-radius: 10px; padding: 12px 16px; margin: 4px 0;
+        }
+        .joke-reply-card .joke-text { color: #e2e8f0; font-size: 0.9rem; }
+        .joke-reply-card .joke-meta { color: #64748b; font-size: 0.75rem; margin-top: 4px; }
+        .trend-badge {
+            display: inline-block; background: rgba(29,161,242,0.12);
+            color: #1da1f2; padding: 3px 10px; border-radius: 12px;
+            font-size: 0.72rem; font-weight: 600; margin-bottom: 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    tab_trending, tab_manual = st.tabs(["🔥 Trending Jokes", "🔍 Manual Search"])
+
+    # ── TAB 1: TRENDING JOKES (pre-generated) ────────────────────────────
+    with tab_trending:
+        st.markdown("Load the latest AI-generated jokes based on today's trending tweets.")
+
+        try:
+            from modules.news_workflow.twitter_trends_fetcher import load_latest_results
+
+            results = load_latest_results()
+            if results:
+                gen_time = results.get("generated_at", "")[:19]
+                topics = results.get("topics", [])
+                total_jokes = sum(len(t.get("jokes", [])) for t in topics)
+
+                st.success(f"✅ Loaded **{total_jokes}** jokes from **{len(topics)}** trending tweets (generated: {gen_time})")
+
+                for t_idx, topic_data in enumerate(topics):
+                    tweet = topic_data.get("tweet", {})
+                    jokes = topic_data.get("jokes", [])
+                    trend_name = topic_data.get("trend_name", "")
+
+                    if not jokes:
+                        continue
+
+                    with st.expander(f"🐦 {trend_name} — {len(jokes)} jokes", expanded=False):
+                        # Show the source tweet
+                        st.markdown(f"""
+                        <div class="tweet-card">
+                            <span class="trend-badge">{trend_name}</span>
+                            <div class="tweet-author">{tweet.get('author_name', '')}
+                                <span class="tweet-handle">@{tweet.get('author', '')}</span>
+                            </div>
+                            <div class="tweet-text">{tweet.get('text', '')}</div>
+                            <div class="tweet-stats">
+                                ❤️ {tweet.get('likes', 0):,} &nbsp;·&nbsp;
+                                🔁 {tweet.get('retweets', 0):,} &nbsp;·&nbsp;
+                                👁️ {tweet.get('views', 0):,}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        st.markdown(f"[🔗 Open on X →]({tweet.get('url', '')})")
+
+                        # Show jokes with reply buttons
+                        for j_idx, joke_data in enumerate(jokes):
+                            joke_text = joke_data.get("joke", "N/A")
+                            engine = joke_data.get("engine", "?")
+
+                            st.markdown(f"""
+                            <div class="joke-reply-card">
+                                <div class="joke-text">{joke_text}</div>
+                                <div class="joke-meta">{engine} • {len(joke_text)} chars</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            col_reply, col_sched, col_edit = st.columns([1, 1, 2])
+
+                            with col_reply:
+                                if st.button("🚀 Reply Now", key=f"treply_{t_idx}_{j_idx}", type="primary"):
+                                    try:
+                                        from modules.twitter.twitter_client import TwitterClient
+                                        account = st.session_state.get("reply_account", "account_1")
+                                        client = TwitterClient(account=account)
+                                        result = client.post_tweet(joke_text, reply_to_tweet_id=tweet.get("id"))
+                                        st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
+                                    except Exception as e:
+                                        st.error(f"❌ Failed: {e}")
+
+                            with col_sched:
+                                if st.button("📅 Schedule", key=f"tsched_{t_idx}_{j_idx}"):
+                                    st.session_state[f"show_sched_{t_idx}_{j_idx}"] = True
+
+                            with col_edit:
+                                pass  # Spacer
+
+                            # Show schedule form if toggled
+                            if st.session_state.get(f"show_sched_{t_idx}_{j_idx}", False):
+                                try:
+                                    import pytz
+                                    IST = pytz.timezone("Asia/Kolkata")
+                                    from modules.scheduler.scheduler_db import insert_schedule
+                                    from modules.scheduler.slot_calculator import get_next_slot
+
+                                    s_col1, s_col2, s_col3 = st.columns([2, 2, 1])
+                                    with s_col1:
+                                        s_date = st.date_input("Date", key=f"sd_{t_idx}_{j_idx}",
+                                                               label_visibility="collapsed")
+                                    with s_col2:
+                                        s_time = st.time_input("Time", key=f"st_{t_idx}_{j_idx}",
+                                                               step=timedelta(minutes=30),
+                                                               label_visibility="collapsed")
+                                    with s_col3:
+                                        if st.button("✅ Confirm", key=f"sconf_{t_idx}_{j_idx}", type="primary"):
+                                            sched_dt = IST.localize(datetime.combine(s_date, s_time))
+                                            account = st.session_state.get("reply_account", "account_1")
+                                            insert_schedule(
+                                                platform="twitter_text",
+                                                video_url=None,
+                                                caption=joke_text,
+                                                scheduled_time=sched_dt,
+                                                twitter_account=account,
+                                                reply_to_tweet_id=tweet.get("id"),
+                                            )
+                                            st.success(f"✅ Scheduled for {sched_dt.strftime('%b %d, %I:%M %p IST')}")
+                                            del st.session_state[f"show_sched_{t_idx}_{j_idx}"]
+                                            time.sleep(0.5); st.rerun()
+                                except Exception as e:
+                                    st.error(f"Schedule error: {e}")
+
+                # Account selector for replies
+                st.markdown("---")
+                st.markdown("#### ⚙️ Reply Account")
+                try:
+                    from modules.twitter.twitter_client import get_available_accounts
+                    available_accounts = get_available_accounts()
+                except Exception:
+                    available_accounts = ["account_1"]
+
+                reply_acct = st.selectbox(
+                    "Select Twitter account for replies",
+                    options=available_accounts,
+                    key="reply_account",
+                )
+            else:
+                st.info("📭 No trending tweet jokes generated yet. Run the daily pipeline first from **📰 Daily News Jokes** or wait for the next automated run.")
+
+        except Exception as e:
+            st.error(f"❌ Failed to load trending results: {e}")
+
+    # ── TAB 2: MANUAL SEARCH ─────────────────────────────────────────────
+    with tab_manual:
+        st.markdown("Search for any tweet and compose a reply directly.")
+
+        # Search bar
+        search_query = st.text_input("🔍 Search tweets", placeholder="e.g., Modi, IPL, Tesla, UFC...",
+                                     key="manual_tweet_search")
+
+        if st.button("🔍 Search", type="primary", disabled=not search_query):
+            with st.spinner(f"🔍 Searching tweets for: {search_query}..."):
+                try:
+                    from modules.news_workflow.twitter_trends_fetcher import search_tweets_manual
+                    results = search_tweets_manual(search_query, count=10)
+                    st.session_state.manual_search_results = results
+                    st.session_state.manual_search_query = search_query
+                except Exception as e:
+                    st.error(f"❌ Search failed: {e}")
+                    st.session_state.manual_search_results = []
+
+        # Display results
+        if st.session_state.get("manual_search_results"):
+            results = st.session_state.manual_search_results
+            st.success(f"Found **{len(results)}** tweets for \"{st.session_state.get('manual_search_query', '')}\"")
+
+            for m_idx, tweet in enumerate(results):
+                st.markdown(f"""
+                <div class="tweet-card">
+                    <div class="tweet-author">{tweet.get('author_name', '')}
+                        <span class="tweet-handle">@{tweet.get('author', '')}</span>
+                    </div>
+                    <div class="tweet-text">{tweet.get('text', '')}</div>
+                    <div class="tweet-stats">
+                        ❤️ {tweet.get('likes', 0):,} &nbsp;·&nbsp;
+                        🔁 {tweet.get('retweets', 0):,} &nbsp;·&nbsp;
+                        👁️ {tweet.get('views', 0):,}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown(f"[🔗 Open on X →]({tweet.get('url', '')})")
+
+                # Reply compose section
+                reply_text = st.text_area(
+                    f"✍️ Reply to @{tweet.get('author', '')}",
+                    max_chars=280,
+                    key=f"manual_reply_{m_idx}",
+                    placeholder="Type your reply here...",
+                    height=80,
+                )
+
+                char_count = len(reply_text) if reply_text else 0
+                char_color = "#10b981" if char_count <= 280 else "#ef4444"
+                st.markdown(f'<span style="color:{char_color};font-size:0.75rem;">{char_count}/280</span>',
+                           unsafe_allow_html=True)
+
+                mc1, mc2 = st.columns(2)
+                with mc1:
+                    if st.button("🚀 Reply Now", key=f"m_reply_{m_idx}", type="primary",
+                                disabled=not reply_text):
+                        try:
+                            from modules.twitter.twitter_client import TwitterClient
+                            account = st.session_state.get("reply_account_manual", "account_1")
+                            client = TwitterClient(account=account)
+                            result = client.post_tweet(reply_text, reply_to_tweet_id=tweet.get("id"))
+                            st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
+                        except Exception as e:
+                            st.error(f"❌ Failed: {e}")
+
+                with mc2:
+                    if st.button("📅 Schedule Reply", key=f"m_sched_{m_idx}",
+                                disabled=not reply_text):
+                        st.session_state[f"m_show_sched_{m_idx}"] = True
+
+                if st.session_state.get(f"m_show_sched_{m_idx}", False):
+                    try:
+                        import pytz
+                        IST = pytz.timezone("Asia/Kolkata")
+                        from modules.scheduler.scheduler_db import insert_schedule
+
+                        ms1, ms2, ms3 = st.columns([2, 2, 1])
+                        with ms1:
+                            m_date = st.date_input("Date", key=f"md_{m_idx}", label_visibility="collapsed")
+                        with ms2:
+                            m_time = st.time_input("Time", key=f"mt_{m_idx}",
+                                                    step=timedelta(minutes=30),
+                                                    label_visibility="collapsed")
+                        with ms3:
+                            if st.button("✅ Confirm", key=f"mconf_{m_idx}", type="primary"):
+                                sched_dt = IST.localize(datetime.combine(m_date, m_time))
+                                account = st.session_state.get("reply_account_manual", "account_1")
+                                insert_schedule(
+                                    platform="twitter_text",
+                                    video_url=None,
+                                    caption=reply_text,
+                                    scheduled_time=sched_dt,
+                                    twitter_account=account,
+                                    reply_to_tweet_id=tweet.get("id"),
+                                )
+                                st.success(f"✅ Scheduled for {sched_dt.strftime('%b %d, %I:%M %p IST')}")
+                                del st.session_state[f"m_show_sched_{m_idx}"]
+                                time.sleep(0.5); st.rerun()
+                    except Exception as e:
+                        st.error(f"Schedule error: {e}")
+
+                st.markdown("---")
+
+            # Account selector for manual replies
+            try:
+                from modules.twitter.twitter_client import get_available_accounts
+                available_accounts = get_available_accounts()
+            except Exception:
+                available_accounts = ["account_1"]
+
+            st.selectbox(
+                "Reply account",
+                options=available_accounts,
+                key="reply_account_manual",
+            )
 
 
 # ─── Footer ──────────────────────────────────────────────────────────────────

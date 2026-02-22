@@ -95,20 +95,25 @@ def send_email(subject, html_body):
 
 # ─── Format & Send Jokes ────────────────────────────────────────────────────
 
-def notify_jokes(headlines, jokes_by_headline):
+def notify_jokes(headlines, jokes_by_headline, tweet_jokes=None):
     """
-    Format 100 jokes nicely and send via Telegram + Email.
-    
+    Format jokes nicely and send via Telegram + Email.
+
     Args:
         headlines: List of headline strings
         jokes_by_headline: Dict {headline: [joke_dicts]}
+        tweet_jokes: Optional dict {topic: {"tweet": {...}, "trend": {...}, "jokes": [...]}}
     """
     total = sum(len(j) for j in jokes_by_headline.values())
+    tweet_total = sum(len(v.get("jokes", [])) for v in (tweet_jokes or {}).values())
+    grand_total = total + tweet_total
 
     # ── Build Telegram message (HTML format) ──
     tg_parts = [
         f"🎭 <b>DAILY COMEDY BRIEF</b> 🎭\n"
-        f"📰 {len(headlines)} Headlines × 20 Jokes = {total} Total\n"
+        f"📰 {len(headlines)} Headlines → {total} News Jokes\n"
+        + (f"🐦 {len(tweet_jokes or {})} Trends → {tweet_total} Tweet Jokes\n" if tweet_total else "")
+        + f"📊 Total: {grand_total}\n"
         f"{'─' * 30}"
     ]
 
@@ -123,6 +128,28 @@ def notify_jokes(headlines, jokes_by_headline):
             joke_text = joke_data.get("joke", "N/A")
             engine = joke_data.get("engine", "?")
             tg_parts.append(f"  {i}. {joke_text}\n     <i>[{engine}]</i>")
+
+    # Add tweet jokes section
+    if tweet_jokes:
+        tg_parts.append(f"\n{'─' * 30}")
+        tg_parts.append(f"\n🐦 <b>TWITTER TRENDING JOKES</b> 🐦\n")
+
+        for topic, data in tweet_jokes.items():
+            jokes = data.get("jokes", [])
+            tweet = data.get("tweet", {})
+            if not jokes:
+                continue
+
+            author = tweet.get("author", "unknown")
+            trend_name = data.get("trend", {}).get("name", "")
+            tg_parts.append(f"\n🐦 <b>{trend_name}</b> (from @{author})")
+            tg_parts.append(f"   📝 \"{tweet.get('text', '')[:100]}\"")
+            tg_parts.append(f"   🔗 {tweet.get('url', '')}\n")
+
+            for i, joke_data in enumerate(jokes, 1):
+                joke_text = joke_data.get("joke", "N/A")
+                engine = joke_data.get("engine", "?")
+                tg_parts.append(f"  {i}. {joke_text}\n     <i>[{engine}]</i>")
 
     tg_message = "\n".join(tg_parts)
 
@@ -154,6 +181,47 @@ def notify_jokes(headlines, jokes_by_headline):
                 f'</tr>'
             )
 
+    # Add tweet jokes to email
+    if tweet_jokes:
+        email_rows.append(
+            '<tr><td colspan="3" style="background:linear-gradient(135deg,#1da1f2,#0d8bd9);'
+            'color:white;padding:16px;font-size:18px;font-weight:bold;border-radius:8px;'
+            'text-align:center;margin-top:20px;">🐦 Twitter Trending Jokes</td></tr>'
+        )
+
+        for topic, data in tweet_jokes.items():
+            jokes = data.get("jokes", [])
+            tweet = data.get("tweet", {})
+            if not jokes:
+                continue
+
+            author = tweet.get("author", "unknown")
+            trend_name = data.get("trend", {}).get("name", "")
+            tweet_text_preview = tweet.get("text", "")[:120]
+            tweet_url = tweet.get("url", "")
+
+            email_rows.append(
+                f'<tr><td colspan="3" style="background:#e8f4fd;padding:12px;'
+                f'border-radius:8px;border-left:4px solid #1da1f2;">'
+                f'<strong>🐦 {trend_name}</strong> — @{author}<br>'
+                f'<span style="color:#666;font-size:13px;">"{tweet_text_preview}"</span><br>'
+                f'<a href="{tweet_url}" style="color:#1da1f2;font-size:12px;">Open on X →</a>'
+                f'</td></tr>'
+            )
+
+            for i, joke_data in enumerate(jokes, 1):
+                joke_text = joke_data.get("joke", "N/A")
+                engine = joke_data.get("engine", "?")
+                bg = "#f0f8ff" if i % 2 == 0 else "#ffffff"
+
+                email_rows.append(
+                    f'<tr style="background:{bg};">'
+                    f'<td style="padding:8px;color:#666;width:30px;">{i}.</td>'
+                    f'<td style="padding:8px;">{joke_text}</td>'
+                    f'<td style="padding:8px;color:#888;font-size:12px;"><em>{engine}</em></td>'
+                    f'</tr>'
+                )
+
     email_html = f"""
     <html>
     <body style="font-family: 'Inter', Arial, sans-serif; max-width: 800px; margin: 0 auto;">
@@ -161,14 +229,14 @@ def notify_jokes(headlines, jokes_by_headline):
                     padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
             <h1 style="margin: 0;">🎭 Daily Comedy Brief</h1>
             <p style="margin: 5px 0 0 0; opacity: 0.9;">
-                {len(headlines)} Headlines × 20 Jokes = {total} Total
+                📰 {total} News Jokes + 🐦 {tweet_total} Tweet Jokes = {grand_total} Total
             </p>
         </div>
-        
+
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             {''.join(email_rows)}
         </table>
-        
+
         <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
             Unified Content Engine V6 — Automated Daily Brief
         </p>
@@ -184,7 +252,7 @@ def notify_jokes(headlines, jokes_by_headline):
 
     print("   📧 Email...")
     send_email(
-        subject=f"🎭 Daily Comedy Brief — {total} Jokes from {len(headlines)} Headlines",
+        subject=f"🎭 Daily Comedy Brief — {grand_total} Jokes ({total} News + {tweet_total} Tweets)",
         html_body=email_html,
     )
 

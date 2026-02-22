@@ -183,12 +183,15 @@ def _get_twitter_oauth1(account="account_1"):
     return OAuth1(consumer_key, consumer_secret, acct["token"], acct["secret"])
 
 
-def _publish_tweet_text(text, account="account_1"):
-    """Post a text-only tweet."""
+def _publish_tweet_text(text, account="account_1", reply_to_tweet_id=None):
+    """Post a text-only tweet. Optionally as a reply."""
     auth = _get_twitter_oauth1(account)
+    payload = {"text": text}
+    if reply_to_tweet_id:
+        payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
     resp = http_requests.post(
         f"{TWITTER_API_BASE}/tweets",
-        json={"text": text},
+        json=payload,
         auth=auth,
         timeout=30,
     )
@@ -267,13 +270,16 @@ def _upload_twitter_media(video_path, account="account_1"):
     return media_id
 
 
-def _publish_tweet_with_video(text, video_path, account="account_1"):
-    """Upload video and post tweet."""
+def _publish_tweet_with_video(text, video_path, account="account_1", reply_to_tweet_id=None):
+    """Upload video and post tweet. Optionally as a reply."""
     media_id = _upload_twitter_media(video_path, account)
     auth = _get_twitter_oauth1(account)
+    payload = {"text": text, "media": {"media_ids": [media_id]}}
+    if reply_to_tweet_id:
+        payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
     resp = http_requests.post(
         f"{TWITTER_API_BASE}/tweets",
-        json={"text": text, "media": {"media_ids": [media_id]}},
+        json=payload,
         auth=auth,
         timeout=30,
     )
@@ -336,6 +342,7 @@ def publish_due_posts():
         video_url = post.get("video_url")
         twitter_account = post.get("twitter_account", "account_1")
         instagram_account = post.get("instagram_account", "khushal_page")
+        reply_to_tweet_id = post.get("reply_to_tweet_id")
 
         video_path = None
 
@@ -351,12 +358,12 @@ def publish_due_posts():
                 _publish_instagram(video_path, caption, account=instagram_account)
 
             elif platform == "twitter_text":
-                _publish_tweet_text(caption, account=twitter_account)
+                _publish_tweet_text(caption, account=twitter_account, reply_to_tweet_id=reply_to_tweet_id)
 
             elif platform == "twitter_video":
                 if not video_path:
                     raise ValueError("Twitter video post requires a video")
-                _publish_tweet_with_video(caption, video_path, account=twitter_account)
+                _publish_tweet_with_video(caption, video_path, account=twitter_account, reply_to_tweet_id=reply_to_tweet_id)
 
             else:
                 raise ValueError(f"Unknown platform: {platform}")

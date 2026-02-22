@@ -76,7 +76,7 @@ def delete_from_storage(video_url):
 
 # ─── Database Operations ─────────────────────────────────────────────────────
 
-def insert_schedule(platform, video_url, caption, scheduled_time, twitter_account=None, instagram_account=None):
+def insert_schedule(platform, video_url, caption, scheduled_time, twitter_account=None, instagram_account=None, reply_to_tweet_id=None):
     """
     Insert a new scheduled post into the database.
 
@@ -87,6 +87,7 @@ def insert_schedule(platform, video_url, caption, scheduled_time, twitter_accoun
         scheduled_time: datetime (timezone-aware) when to post
         twitter_account: Twitter account name (None for Instagram)
         instagram_account: Instagram account name (None for Twitter)
+        reply_to_tweet_id: Tweet ID to reply to (None for original posts)
 
     Returns:
         dict: The inserted row data.
@@ -101,10 +102,12 @@ def insert_schedule(platform, video_url, caption, scheduled_time, twitter_accoun
         "status": "pending",
         "twitter_account": twitter_account,
         "instagram_account": instagram_account,
+        "reply_to_tweet_id": reply_to_tweet_id,
     }
 
     result = client.table(TABLE_NAME).insert(data).execute()
-    print(f"   📋 Scheduled: {platform} at {scheduled_time.strftime('%Y-%m-%d %H:%M')}")
+    reply_tag = f" (reply to {reply_to_tweet_id})" if reply_to_tweet_id else ""
+    print(f"   📋 Scheduled: {platform} at {scheduled_time.strftime('%Y-%m-%d %H:%M')}{reply_tag}")
     return result.data[0] if result.data else {}
 
 

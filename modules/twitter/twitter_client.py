@@ -60,6 +60,9 @@ def list_accounts() -> list[str]:
         if not f.name.startswith(".")
     ])
 
+# Alias for UI imports
+get_available_accounts = list_accounts
+
 
 def list_sample_videos() -> list[str]:
     """Return list of .mp4 filenames in the videos directory."""
@@ -210,22 +213,27 @@ class TwitterClient:
             f"Failed to get user info (HTTP {resp.status_code}): {resp.text}"
         )
 
-    def post_tweet(self, text: str) -> dict:
+    def post_tweet(self, text: str, reply_to_tweet_id: str = None) -> dict:
         """
         Post a tweet. Returns the tweet data dict with 'id' and 'text'.
+        If reply_to_tweet_id is provided, posts as a reply to that tweet.
         """
         if not text or not text.strip():
             raise ValueError("Tweet text cannot be empty")
         if len(text) > 280:
             raise ValueError(f"Tweet too long ({len(text)} chars, max 280)")
 
-        resp = self._request("POST", f"{API_BASE}/tweets", json={"text": text})
+        payload = {"text": text}
+        if reply_to_tweet_id:
+            payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
+
+        resp = self._request("POST", f"{API_BASE}/tweets", json=payload)
 
         if resp.status_code == 201:
             return resp.json().get("data", {})
         elif resp.status_code == 401 and self.auth_type == "oauth2":
             self._refresh_access_token()
-            resp = self._request("POST", f"{API_BASE}/tweets", json={"text": text})
+            resp = self._request("POST", f"{API_BASE}/tweets", json=payload)
             if resp.status_code == 201:
                 return resp.json().get("data", {})
         elif resp.status_code == 429:
