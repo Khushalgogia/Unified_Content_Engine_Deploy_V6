@@ -105,11 +105,20 @@ def insert_schedule(platform, video_url, caption, scheduled_time, twitter_accoun
     }
 
     # Only include reply_to_tweet_id if it has a value
-    # (avoids error if the column doesn't exist in DB yet)
     if reply_to_tweet_id:
         data["reply_to_tweet_id"] = reply_to_tweet_id
 
-    result = client.table(TABLE_NAME).insert(data).execute()
+    try:
+        result = client.table(TABLE_NAME).insert(data).execute()
+    except Exception as e:
+        # If the column doesn't exist yet, retry without it
+        if "reply_to_tweet_id" in str(e) and reply_to_tweet_id:
+            print(f"   ⚠️ reply_to_tweet_id column missing — scheduling without reply chain")
+            data.pop("reply_to_tweet_id", None)
+            result = client.table(TABLE_NAME).insert(data).execute()
+        else:
+            raise
+
     reply_tag = f" (reply to {reply_to_tweet_id})" if reply_to_tweet_id else ""
     print(f"   📋 Scheduled: {platform} at {scheduled_time.strftime('%Y-%m-%d %H:%M')}{reply_tag}")
     return result.data[0] if result.data else {}
