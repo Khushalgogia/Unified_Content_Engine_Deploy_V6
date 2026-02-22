@@ -1703,7 +1703,7 @@ elif page == "🐦 Tweet Reply Studio":
                                     try:
                                         from modules.twitter.twitter_client import TwitterClient
                                         account = st.session_state.get("reply_account", "account_1")
-                                        client = TwitterClient(account=account)
+                                        client = TwitterClient(account_name=account)
                                         result = client.post_tweet(joke_text, reply_to_tweet_id=tweet.get("id"))
                                         st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
                                     except Exception as e:
@@ -1834,7 +1834,7 @@ elif page == "🐦 Tweet Reply Studio":
                         try:
                             from modules.twitter.twitter_client import TwitterClient
                             account = st.session_state.get("reply_account_manual", "account_1")
-                            client = TwitterClient(account=account)
+                            client = TwitterClient(account_name=account)
                             result = client.post_tweet(reply_text, reply_to_tweet_id=tweet.get("id"))
                             st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
                         except Exception as e:
