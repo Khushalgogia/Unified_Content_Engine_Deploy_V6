@@ -43,6 +43,7 @@ HINDI_MIN_RETWEETS = 100
 
 # Results storage
 RESULTS_DIR = Path(PROJECT_ROOT) / "data" / "tweet_jokes"
+TWEET_JOKES_BUCKET = "tweet_jokes"
 
 
 # ─── twitterapi.io Client ────────────────────────────────────────────────────
@@ -184,6 +185,11 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
         print(f"   ⏳ Rate limited (429), waiting {wait}s before retry ({_retries} left)...")
         time.sleep(wait)
         return search_tweets_for_trend(query, count=count, max_age_hours=max_age_hours, _retries=_retries - 1)
+
+    # Credits exhausted (402) — return special sentinel
+    if status == 402:
+        print(f"   💳 Credits exhausted (HTTP 402) — stopping further searches")
+        return "CREDITS_EXHAUSTED"
 
     if status != 200 or not isinstance(data, dict):
         print(f"   ❌ Search failed for '{query[:60]}' (HTTP {status})")
@@ -419,6 +425,12 @@ def run_twitter_pipeline():
     for t in trends:
         print(f"\n   Searching: {t['name']}...")
         tweets = search_tweets_for_trend(t["query"], count=5, max_age_hours=48)
+
+        # Stop early if credits exhausted
+        if tweets == "CREDITS_EXHAUSTED":
+            print(f"   ⚠️ Stopping searches — API credits exhausted")
+            break
+
         if tweets:
             best = _pick_best_tweet(tweets, t["source"])
             if best:
@@ -486,11 +498,12 @@ def run_twitter_pipeline():
 
 
 def _save_results(topics, jokes_by_topic):
-    """Save pipeline results as JSON for Streamlit to load."""
+    """Save pipeline results locally AND to Supabase Storage."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     today = datetime.now().strftime("%Y-%m-%d")
-    filepath = RESULTS_DIR / f"tweet_jokes_{today}.json"
+    filename = f"tweet_jokes_{today}.json"
+    filepath = RESULTS_DIR / filename
 
     data = {
         "generated_at": datetime.now().isoformat(),
@@ -508,15 +521,73 @@ def _save_results(topics, jokes_by_topic):
             "jokes": entry.get("jokes", []),
         })
 
+    # Save locally
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"\n💾 Results saved locally: {filepath}")
 
-    print(f"\n💾 Results saved to {filepath}")
+    # Upload to Supabase Storage so Streamlit Cloud can access it
+    try:
+        _upload_to_supabase_storage(filename, data)
+    except Exception as e:
+        print(f"   ⚠️ Supabase Storage upload failed: {e}")
+        print(f"   (Local file still saved — Streamlit local dev will work)")
+
     return filepath
 
 
+def _upload_to_supabase_storage(filename, data):
+    """Upload tweet jokes JSON to Supabase Storage bucket."""
+    from supabase import create_client
+
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
+    if not url or not key:
+        print("   ⚠️ SUPABASE_URL/KEY not set — skipping storage upload")
+        return
+
+    client = create_client(url, key)
+    json_bytes = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")
+
+    # Try to remove old file first (upsert)
+    try:
+        client.storage.from_(TWEET_JOKES_BUCKET).remove([filename])
+    except Exception:
+        pass  # File may not exist yet
+
+    # Also upload as "latest.json" for easy loading
+    try:
+        client.storage.from_(TWEET_JOKES_BUCKET).remove(["latest.json"])
+    except Exception:
+        pass
+
+    client.storage.from_(TWEET_JOKES_BUCKET).upload(
+        path=filename,
+        file=json_bytes,
+        file_options={"content-type": "application/json"},
+    )
+    client.storage.from_(TWEET_JOKES_BUCKET).upload(
+        path="latest.json",
+        file=json_bytes,
+        file_options={"content-type": "application/json"},
+    )
+    print(f"   ☁️ Uploaded to Supabase Storage: {filename} + latest.json")
+
+
 def load_latest_results():
-    """Load the most recent tweet jokes JSON for Streamlit."""
+    """
+    Load the most recent tweet jokes.
+    Priority: Supabase Storage → local file.
+    """
+    # Try Supabase Storage first (works on Streamlit Cloud)
+    try:
+        data = _download_from_supabase_storage()
+        if data:
+            return data
+    except Exception as e:
+        print(f"   ⚠️ Supabase Storage download failed: {e}")
+
+    # Fallback to local file (works in local dev)
     if not RESULTS_DIR.exists():
         return None
 
@@ -528,12 +599,36 @@ def load_latest_results():
         return json.load(f)
 
 
+def _download_from_supabase_storage():
+    """Download latest.json from Supabase Storage."""
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
+    if not url or not key:
+        return None
+
+    # Use public URL to download (no auth needed for public bucket)
+    public_url = f"{url}/storage/v1/object/public/{TWEET_JOKES_BUCKET}/latest.json"
+
+    req = urllib.request.Request(public_url)
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+            if resp.status == 200:
+                return json.loads(resp.read().decode())
+    except Exception:
+        pass
+
+    return None
+
+
 def search_tweets_manual(query, count=10):
     """
     Manual search for Streamlit Tab 2. Returns top tweets sorted by engagement.
     Limited to last 7 days to ensure relevance.
     """
     tweets = search_tweets_for_trend(query, count=count, max_age_hours=168)  # 7 days
+    if tweets == "CREDITS_EXHAUSTED":
+        return []  # Return empty list, not sentinel
     return sorted(tweets, key=lambda t: t.get("likes", 0) + t.get("retweets", 0) * 3, reverse=True)
 
 

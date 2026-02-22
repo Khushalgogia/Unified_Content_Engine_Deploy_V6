@@ -23,14 +23,14 @@ if PROJECT_ROOT not in sys.path:
 
 def run_daily_pipeline():
     """
-    Run the complete daily joke generation pipeline.
-    Returns (headlines, jokes_by_headline, tweet_topics, tweet_jokes) tuple.
+    Run the complete daily joke generation pipeline (news only).
+    Twitter jokes are now handled separately by daily_tweet_jokes.py.
+    Returns (headlines, jokes_by_headline) tuple.
     """
     print()
     print("=" * 60)
     print("🎭 MORNING JOKES GENERATOR")
     print("   10 Headlines × ~10 Best Bridges = ~100 Quality Jokes")
-    print("   + Twitter Trending Jokes")
     print("=" * 60)
     print()
 
@@ -41,7 +41,7 @@ def run_daily_pipeline():
 
     if not headlines:
         print("❌ No headlines fetched. Aborting.")
-        return [], {}, [], {}
+        return [], {}
 
     print(f"\n✅ Got {len(headlines)} headlines")
 
@@ -60,7 +60,6 @@ def run_daily_pipeline():
         # Search bridges
         try:
             matches = search_bridges(headline, top_k=15)
-            # Filter: keep only bridges with decent similarity, cap at 10
             quality_matches = [m for m in matches if m.get('similarity', 0) > 0.25][:10]
             print(f"   🔍 Found {len(matches)} bridges → {len(quality_matches)} quality matches (similarity > 0.25)")
         except Exception as e:
@@ -83,23 +82,11 @@ def run_daily_pipeline():
     print(f"🎯 STEP 2 COMPLETE: {total} jokes from {len(headlines)} headlines")
     print("=" * 60)
 
-    # Step 3: Twitter Trending Jokes
-    tweet_topics = []
-    tweet_jokes = {}
-    try:
-        print("\n🐦 STEP 3: Running Twitter Trending Jokes Pipeline...")
-        from modules.news_workflow.twitter_trends_fetcher import run_twitter_pipeline
-        tweet_topics, tweet_jokes = run_twitter_pipeline()
-        tweet_total = sum(len(v.get("jokes", [])) for v in tweet_jokes.values())
-        print(f"✅ Twitter pipeline: {tweet_total} jokes from {len(tweet_topics)} tweet topics")
-    except Exception as e:
-        print(f"⚠️ Twitter pipeline failed (non-fatal): {e}")
-
-    # Step 4: Send notifications
-    print("\n📨 STEP 4: Sending notifications...")
+    # Step 3: Send notifications (news jokes only)
+    print("\n📨 STEP 3: Sending notifications...")
     try:
         from modules.news_workflow.notifier import notify_jokes
-        notify_jokes(headlines, jokes_by_headline, tweet_jokes=tweet_jokes)
+        notify_jokes(headlines, jokes_by_headline)
     except Exception as e:
         print(f"❌ Notification failed: {e}")
 
@@ -108,15 +95,13 @@ def run_daily_pipeline():
     print("🏁 DAILY PIPELINE COMPLETE")
     print(f"   Headlines: {len(headlines)}")
     print(f"   News Jokes: {total}")
-    tweet_total = sum(len(v.get("jokes", [])) for v in tweet_jokes.values())
-    print(f"   Tweet Jokes: {tweet_total}")
-    print(f"   Total: {total + tweet_total}")
     print("=" * 60)
 
-    return headlines, jokes_by_headline, tweet_topics, tweet_jokes
+    return headlines, jokes_by_headline
 
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
     run_daily_pipeline()
+
