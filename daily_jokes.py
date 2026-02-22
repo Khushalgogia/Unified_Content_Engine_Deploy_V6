@@ -43,7 +43,7 @@ if __name__ == "__main__":
     print()
 
     from modules.news_workflow.morning_jokes_generator import run_daily_pipeline
-    headlines, jokes = run_daily_pipeline()
+    headlines, jokes, tweet_jokes = run_daily_pipeline()
 
     total = sum(len(j) for j in jokes.values())
     print(f"\n📊 Final stats: {total} jokes from {len(headlines)} headlines")
