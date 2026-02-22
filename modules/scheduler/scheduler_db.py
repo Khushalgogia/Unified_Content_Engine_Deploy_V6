@@ -102,8 +102,12 @@ def insert_schedule(platform, video_url, caption, scheduled_time, twitter_accoun
         "status": "pending",
         "twitter_account": twitter_account,
         "instagram_account": instagram_account,
-        "reply_to_tweet_id": reply_to_tweet_id,
     }
+
+    # Only include reply_to_tweet_id if it has a value
+    # (avoids error if the column doesn't exist in DB yet)
+    if reply_to_tweet_id:
+        data["reply_to_tweet_id"] = reply_to_tweet_id
 
     result = client.table(TABLE_NAME).insert(data).execute()
     reply_tag = f" (reply to {reply_to_tweet_id})" if reply_to_tweet_id else ""
