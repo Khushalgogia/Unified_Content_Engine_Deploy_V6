@@ -30,7 +30,7 @@ if PROJECT_ROOT not in sys.path:
 
 TWITTERAPI_KEY = os.getenv("TWITTERAPI_IO_KEY", "")
 TWITTERAPI_BASE = "https://api.twitterapi.io"
-RATE_LIMIT_DELAY = 5  # seconds between API calls (free tier: 1 req/5sec)
+RATE_LIMIT_DELAY = 6  # seconds between API calls (free tier: 1 req/5sec, buffer)
 
 INDIA_WOEID = "23424848"
 GLOBAL_WOEID = "1"
@@ -137,10 +137,11 @@ def fetch_trending_topics():
 
 # ─── Tweet Search ─────────────────────────────────────────────────────────────
 
-def search_tweets_for_trend(query, count=10):
+def search_tweets_for_trend(query, count=10, _retries=3):
     """
     Search for top tweets about a trending topic.
     Returns list of tweet dicts with id, text, author, likes, retweets, url.
+    Retries automatically on 429 (rate limit) with exponential backoff.
     """
     time.sleep(RATE_LIMIT_DELAY)
 
@@ -149,8 +150,15 @@ def search_tweets_for_trend(query, count=10):
         "queryType": "Top",
     })
 
+    # Retry on rate limit (429)
+    if status == 429 and _retries > 0:
+        wait = RATE_LIMIT_DELAY * (4 - _retries)  # 6s, 12s, 18s backoff
+        print(f"   ⏳ Rate limited (429), waiting {wait}s before retry ({_retries} left)...")
+        time.sleep(wait)
+        return search_tweets_for_trend(query, count=count, _retries=_retries - 1)
+
     if status != 200 or not isinstance(data, dict):
-        print(f"   ❌ Search failed for '{query}' (HTTP {status})")
+        print(f"   ❌ Search failed for '{query[:60]}' (HTTP {status})")
         return []
 
     raw_tweets = data.get("tweets", [])
