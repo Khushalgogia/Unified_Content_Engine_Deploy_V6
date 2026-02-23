@@ -1690,32 +1690,42 @@ elif page == "🐦 Tweet Reply Studio":
                             joke_text = joke_data.get("joke", "N/A")
                             engine = joke_data.get("engine", "?")
 
-                            st.markdown(f"""
-                            <div class="joke-reply-card">
-                                <div class="joke-text">{joke_text}</div>
-                                <div class="joke-meta">{engine} • {len(joke_text)} chars</div>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            st.markdown(f'<div class="joke-meta">{engine} • generated joke:</div>',
+                                        unsafe_allow_html=True)
 
-                            col_reply, col_sched, col_edit = st.columns([1, 1, 2])
+                            # Editable text area pre-filled with the joke
+                            edited_text = st.text_area(
+                                f"✍️ Edit joke before replying",
+                                value=joke_text,
+                                max_chars=280,
+                                key=f"jedit_{t_idx}_{j_idx}",
+                                height=80,
+                                label_visibility="collapsed",
+                            )
+
+                            char_count = len(edited_text) if edited_text else 0
+                            char_color = "#10b981" if char_count <= 280 else "#ef4444"
+                            st.markdown(f'<span style="color:{char_color};font-size:0.75rem;">{char_count}/280</span>',
+                                       unsafe_allow_html=True)
+
+                            col_reply, col_sched = st.columns(2)
 
                             with col_reply:
-                                if st.button("🚀 Reply Now", key=f"treply_{t_idx}_{j_idx}", type="primary"):
+                                if st.button("🚀 Reply Now", key=f"treply_{t_idx}_{j_idx}", type="primary",
+                                            disabled=not edited_text):
                                     try:
                                         from modules.twitter.twitter_client import TwitterClient
                                         account = st.session_state.get("reply_account", "account_1")
                                         client = TwitterClient(account_name=account)
-                                        result = client.post_tweet(joke_text, reply_to_tweet_id=tweet.get("id"))
+                                        result = client.post_tweet(edited_text, reply_to_tweet_id=tweet.get("id"))
                                         st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
                                     except Exception as e:
                                         st.error(f"❌ Failed: {e}")
 
                             with col_sched:
-                                if st.button("📅 Schedule", key=f"tsched_{t_idx}_{j_idx}"):
+                                if st.button("📅 Schedule", key=f"tsched_{t_idx}_{j_idx}",
+                                            disabled=not edited_text):
                                     st.session_state[f"show_sched_{t_idx}_{j_idx}"] = True
-
-                            with col_edit:
-                                pass  # Spacer
 
                             # Show schedule form if toggled
                             if st.session_state.get(f"show_sched_{t_idx}_{j_idx}", False):
@@ -1740,7 +1750,7 @@ elif page == "🐦 Tweet Reply Studio":
                                             insert_schedule(
                                                 platform="twitter_text",
                                                 video_url=None,
-                                                caption=joke_text,
+                                                caption=edited_text,
                                                 scheduled_time=sched_dt,
                                                 twitter_account=account,
                                                 reply_to_tweet_id=tweet.get("id"),
