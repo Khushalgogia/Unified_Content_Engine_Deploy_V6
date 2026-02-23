@@ -33,13 +33,14 @@ TWITTERAPI_BASE = "https://api.twitterapi.io"
 RATE_LIMIT_DELAY = 6  # seconds between API calls (free tier: 1 req/5sec, buffer)
 
 INDIA_WOEID = "23424848"
-GLOBAL_WOEID = "1"
-INDIA_TREND_COUNT = 8
-GLOBAL_TREND_COUNT = 2
+US_WOEID = "23424977"     # United States (English trends)
+UK_WOEID = "23424975"     # United Kingdom (English trends)
+INDIA_TREND_COUNT = 15
+US_TREND_COUNT = 3
+UK_TREND_COUNT = 2
 
-# Hindi tweets need high engagement to be included (since reply is in English)
-HINDI_MIN_LIKES = 500
-HINDI_MIN_RETWEETS = 100
+# Minimum engagement for any tweet to be worth including
+MIN_LIKES = 5
 
 # Results storage
 RESULTS_DIR = Path(PROJECT_ROOT) / "data" / "tweet_jokes"
@@ -86,8 +87,8 @@ def _is_english_trend(name):
 
 def fetch_trending_topics():
     """
-    Fetch 8 India + 2 Global (English-only) trending topics.
-    Returns list of dicts: [{"name": "...", "query": "...", "source": "india|global", "rank": N}]
+    Fetch 15 India + 3 US + 2 UK trending topics.
+    Returns list of dicts: [{"name": "...", "query": "...", "source": "india|us|uk", "rank": N}]
     """
     trends = []
 
@@ -110,28 +111,51 @@ def fetch_trending_topics():
 
     time.sleep(RATE_LIMIT_DELAY)
 
-    # 2. Global trends (English only)
-    print("   🌍 Fetching Global trends (English only)...")
-    status, data = _api_get("/twitter/trends", {"woeid": GLOBAL_WOEID})
-    global_added = 0
+    # 2. US trends (English-speaking)
+    print("   🇺🇸 Fetching US trends...")
+    status, data = _api_get("/twitter/trends", {"woeid": US_WOEID})
+    us_added = 0
     if status == 200 and isinstance(data, dict):
         raw_trends = data.get("trends", [])
         for t in raw_trends:
-            if global_added >= GLOBAL_TREND_COUNT:
+            if us_added >= US_TREND_COUNT:
                 break
             trend_data = t.get("trend", t)
             name = trend_data.get("name", "")
-            if _is_english_trend(name):
-                trends.append({
-                    "name": name,
-                    "query": trend_data.get("target", {}).get("query", name),
-                    "source": "global",
-                    "rank": trend_data.get("rank", 0),
-                })
-                global_added += 1
-        print(f"   ✅ Got {global_added} global English trends")
+            trends.append({
+                "name": name,
+                "query": trend_data.get("target", {}).get("query", name),
+                "source": "us",
+                "rank": trend_data.get("rank", 0),
+            })
+            us_added += 1
+        print(f"   ✅ Got {us_added} US trends")
     else:
-        print(f"   ❌ Global trends failed (HTTP {status}): {str(data)[:200]}")
+        print(f"   ❌ US trends failed (HTTP {status}): {str(data)[:200]}")
+
+    time.sleep(RATE_LIMIT_DELAY)
+
+    # 3. UK trends (English-speaking)
+    print("   🇬🇧 Fetching UK trends...")
+    status, data = _api_get("/twitter/trends", {"woeid": UK_WOEID})
+    uk_added = 0
+    if status == 200 and isinstance(data, dict):
+        raw_trends = data.get("trends", [])
+        for t in raw_trends:
+            if uk_added >= UK_TREND_COUNT:
+                break
+            trend_data = t.get("trend", t)
+            name = trend_data.get("name", "")
+            trends.append({
+                "name": name,
+                "query": trend_data.get("target", {}).get("query", name),
+                "source": "uk",
+                "rank": trend_data.get("rank", 0),
+            })
+            uk_added += 1
+        print(f"   ✅ Got {uk_added} UK trends")
+    else:
+        print(f"   ❌ UK trends failed (HTTP {status}): {str(data)[:200]}")
 
     return trends
 
@@ -175,7 +199,7 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
     time.sleep(RATE_LIMIT_DELAY)
 
     status, data = _api_get("/twitter/tweet/advanced_search", {
-        "query": query,
+        "query": f"{query} lang:en",
         "queryType": "Top",
     })
 
@@ -223,6 +247,7 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
             "likes": t.get("likeCount", 0),
             "retweets": t.get("retweetCount", 0),
             "views": t.get("viewCount", 0),
+            "lang": t.get("lang", ""),
             "url": f"https://x.com/{username}/status/{tweet_id}",
             "created_at": created_at,
             "tweet_age": tweet_age,  # human-readable, e.g. "2h ago"
@@ -234,38 +259,29 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
     return tweets
 
 
-def _is_high_engagement_hindi(tweet):
-    """Check if a Hindi tweet has enough engagement to be worth including."""
-    return tweet.get("likes", 0) >= HINDI_MIN_LIKES or tweet.get("retweets", 0) >= HINDI_MIN_RETWEETS
-
-
-def _pick_best_tweet(tweets, source):
+def _pick_best_tweet(tweets):
     """
-    Pick the best tweet from search results based on language + engagement rules.
-    Global: English only. India: English preferred, Hindi OK if high engagement.
+    Pick the best English tweet from search results.
+    Since we use lang:en in the search query, most tweets should be English.
+    We still do a safety check using the lang field and a basic text check.
     """
     if not tweets:
         return None
 
     for tweet in sorted(tweets, key=lambda t: t.get("likes", 0) + t.get("retweets", 0) * 3, reverse=True):
-        text = tweet.get("text", "")
-        try:
-            text.encode("ascii")
-            is_english = True
-        except UnicodeEncodeError:
-            is_english = False
+        # Skip very low engagement tweets
+        if tweet.get("likes", 0) < MIN_LIKES:
+            continue
 
-        if source == "global":
-            if is_english:
-                return tweet
-        else:  # india
-            if is_english:
-                return tweet
-            elif _is_high_engagement_hindi(tweet):
-                return tweet
+        # Safety: skip if API explicitly says not English
+        lang = tweet.get("lang", "")
+        if lang and lang not in ("en", "und", ""):  # "und" = undetermined = OK
+            continue
 
-    # Fallback: return highest engagement regardless of language
-    return tweets[0] if tweets else None
+        return tweet
+
+    # No tweet met the criteria
+    return None
 
 
 # ─── LLM Preprocessor ────────────────────────────────────────────────────────
@@ -278,14 +294,18 @@ extract a SHORT FACTUAL ONE-LINER that a joke engine can use.
 
 RULES:
 1. SKIP tweets about: death, tragedy, natural disasters, prayers/condolences,
-   boring corporate earnings, generic motivational quotes.
+   boring corporate earnings.
    Mark these as "SKIP" with a reason.
 
-2. KEEP tweets about: irony, frustration, absurdity, relatable situations,
+2. KEEP (high priority) tweets about: irony, frustration, absurdity, relatable situations,
    viral drama, sports fails, price hikes, government decisions, celebrity gossip,
    tech fails, corporate greed, funny incidents.
 
-3. For KEPT tweets, extract a FACTUAL one-sentence summary:
+3. KEEP (lower priority) tweets about: religious events (if there's an ironic angle),
+   motivational/inspirational content (if the situation itself is funny or contradictory),
+   spiritual trends (only if the context is absurd or relatable).
+
+4. For KEPT tweets, extract a FACTUAL one-sentence summary:
    - Write like you're telling a friend what happened
    - Use simple everyday English a 15-year-old would understand
    - If tweet is in Hindi/Hinglish, TRANSLATE to simple English
@@ -293,13 +313,15 @@ RULES:
    - Do NOT add jokes, exaggeration, or opinion — just facts
    - Max 20 words
 
-4. GOOD:
-   ✅ "Bhai Mumbai Police ne 2160 bacche dhundh liye 🔥🔥 #MumbaiPolice"
-      → "Mumbai police found 2,160 out of 2,182 missing children"
+5. GOOD:
    ✅ "Strickland just got knocked out cold in R1 😭 #UFCHouston"
       → "Sean Strickland lost by first-round knockout at UFC Houston"
+   ✅ "Bhai Mumbai Police ne 2160 bacche dhundh liye 🔥🔥"
+      → "Mumbai police found 2,160 out of 2,182 missing children"
+   ✅ "This guru's ashram is trending because they filed a court case against a meme page"
+      → "A spiritual guru's ashram sued a meme page for making fun of them"
 
-5. BAD:
+6. BAD:
    ❌ "The situation is dire and unprecedented" (too formal)
    ❌ "Mumbai police are absolute legends!" (opinion, not fact)
 
@@ -401,7 +423,7 @@ def run_twitter_pipeline():
     print()
     print("=" * 60)
     print("🐦 TWITTER TRENDING JOKES PIPELINE")
-    print("   8 India + 2 Global trends → LLM preprocessing → Jokes")
+    print("   15 India + 3 US + 2 UK trends → lang:en search → LLM preprocessing → Jokes")
     print("=" * 60)
     print()
 
@@ -415,7 +437,8 @@ def run_twitter_pipeline():
 
     print(f"\n✅ Got {len(trends)} trends total")
     for t in trends:
-        flag = "🇮🇳" if t["source"] == "india" else "🌍"
+        flags = {"india": "🇮🇳", "us": "🇺🇸", "uk": "🇬🇧"}
+        flag = flags.get(t["source"], "🌍")
         print(f"   {flag} #{t['rank']}: {t['name']}")
 
     # Step 2: Search tweets for each trend
@@ -432,7 +455,7 @@ def run_twitter_pipeline():
             break
 
         if tweets:
-            best = _pick_best_tweet(tweets, t["source"])
+            best = _pick_best_tweet(tweets)
             if best:
                 tweets_with_trends.append({"trend": t, "tweet": best})
                 print(f"   ✅ Best: @{best['author']} ({best['likes']}❤️ {best['retweets']}🔁) — {best['text'][:80]}")
