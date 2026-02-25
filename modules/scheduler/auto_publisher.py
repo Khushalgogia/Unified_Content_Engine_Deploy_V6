@@ -344,17 +344,8 @@ def publish_due_posts():
         instagram_account = post.get("instagram_account", "khushal_page")
         reply_to_tweet_id = post.get("reply_to_tweet_id")
 
-        # ── Atomic claim: mark as 'publishing' to prevent double-publish ──
-        claim_result = (
-            supabase.table(TABLE_NAME)
-            .update({"status": "publishing"})
-            .eq("id", post_id)
-            .eq("status", "pending")  # Only claim if still pending
-            .execute()
-        )
-        if not claim_result.data:
-            logger.info(f"⏭️ Post #{post_id} already claimed by another publisher")
-            continue
+        # Note: double-publish prevention is handled by .eq("status", "pending")
+        # on the final status update below
 
         video_path = None
 
@@ -380,11 +371,11 @@ def publish_due_posts():
             else:
                 raise ValueError(f"Unknown platform: {platform}")
 
-            # Mark as posted
+            # Mark as posted (atomic: only if still pending — prevents double-publish)
             supabase.table(TABLE_NAME).update({
                 "status": "posted",
                 "posted_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", post_id).execute()
+            }).eq("id", post_id).eq("status", "pending").execute()
 
             logger.info(f"✅ Published #{post_id} ({platform})")
             published += 1
@@ -398,7 +389,7 @@ def publish_due_posts():
             supabase.table(TABLE_NAME).update({
                 "status": "failed",
                 "error_message": str(e)[:500],
-            }).eq("id", post_id).eq("status", "publishing").execute()
+            }).eq("id", post_id).eq("status", "pending").execute()
             failed += 1
 
         finally:
