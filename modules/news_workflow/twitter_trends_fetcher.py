@@ -2,18 +2,19 @@
 Twitter Trends Fetcher — Fetches trending tweets via twitterapi.io and
 preprocesses them for the joke engine using Gemini 3 Flash.
 
-Pipeline:
-1. Fetch 8 India trends + 2 global English-only trends
-2. Search top tweets for each trend
-3. Filter by language + engagement
-4. LLM preprocessor extracts factual one-liners for joke engine
-5. Save results JSON for Streamlit to load later
+Pipeline (v2 — Hybrid Category + Trends):
+1. Fetch India/US trends, apply keyword blocklist (FREE filter)
+2. Generate curated category queries for guaranteed topic diversity
+3. Search top tweets for each source (trends + categories)
+4. Collect ALL candidates, deduplicate, global engagement ranking
+5. Pick top 10 diverse tweets → LLM preprocessor → Joke engine
 """
 
 import os
 import sys
 import json
 import time
+import random
 import urllib.request
 import urllib.parse
 import ssl
@@ -34,17 +35,149 @@ RATE_LIMIT_DELAY = 6  # seconds between API calls (free tier: 1 req/5sec, buffer
 
 INDIA_WOEID = "23424848"
 US_WOEID = "23424977"     # United States (English trends)
-UK_WOEID = "23424975"     # United Kingdom (English trends)
-INDIA_TREND_COUNT = 15
-US_TREND_COUNT = 3
-UK_TREND_COUNT = 2
 
-# Minimum engagement for any tweet to be worth including
-MIN_LIKES = 5
+# Trend counts (reduced — curated queries fill the gap)
+INDIA_TREND_COUNT = 7     # Was 15, now 7 clean trends after blocklist
+US_TREND_COUNT = 3        # Keep 3 US trends
+
+# How many final topics to pick after global ranking
+MAX_FINAL_TOPICS = 10
+MAX_PER_CATEGORY = 2      # Diversity cap: max 2 tweets from same category
 
 # Results storage
 RESULTS_DIR = Path(PROJECT_ROOT) / "data" / "tweet_jokes"
 TWEET_JOKES_BUCKET = "tweet_jokes"
+
+
+# ─── Layer 1: Trend Blocklist (Zero API Cost) ────────────────────────────────
+
+TREND_BLOCKLIST_KEYWORDS = [
+    # Religious / spiritual (biggest offender — clusters flood India trends)
+    "ram rahim", "dera sacha", "gurmeet", "ashram", "bhajan", "aarti",
+    "darshan", "puja", "pranam", "jai shri", "jayanti", "birth anniversary",
+    "mandir", "temple", "mosque", "church", "prayer", "devotional",
+    "spiritual", "guru nanak", "guru gobind", "baba", "sant ",
+    "mahashivratri", "navratri", "ramadan", "christmas mass",
+    # Niche foreign sports Indians don't follow
+    "f1", "formula 1", "formula one", "wwe", "wrestlemania", "smackdown",
+    "nfl", "super bowl", "nba", "mlb", "baseball", "rugby", "mma",
+    "ufc", "premier league", "champions league", "la liga", "bundesliga",
+    "serie a", "nascar", "pga", "golf tour",
+    # Paid/spam trends
+    "contest", "giveaway", "win free", "follow and rt", "follow & retweet",
+    "retweet to win", "lucky draw",
+]
+
+
+def _is_blocked_trend(trend_name):
+    """Check if a trend matches any blocklist keyword (case-insensitive)."""
+    name_lower = trend_name.lower()
+    for keyword in TREND_BLOCKLIST_KEYWORDS:
+        if keyword in name_lower:
+            return True
+    return False
+
+
+# ─── Layer 2: Curated Category Queries ────────────────────────────────────────
+
+CURATED_CATEGORIES = [
+    {
+        "name": "Indian Politics & Government",
+        "category": "politics",
+        "queries": [
+            '(india government OR "new policy" OR parliament OR budget) lang:en',
+            '(BJP OR Congress OR Modi OR "supreme court" india) lang:en',
+            '(election OR minister OR "price hike" OR subsidy india) lang:en',
+        ],
+    },
+    {
+        "name": "Bollywood & Entertainment",
+        "category": "entertainment",
+        "queries": [
+            '(bollywood OR "new movie" OR actor OR actress OR trailer) lang:en',
+            '(netflix OR "web series" OR OTT OR "box office") lang:en',
+            '(celebrity OR controversy OR award OR "film festival") lang:en',
+        ],
+    },
+    {
+        "name": "Cricket & IPL",
+        "category": "cricket",
+        "queries": [
+            '(cricket OR IPL OR "team india" OR BCCI) lang:en',
+            '(cricket OR match OR wicket OR century OR "world cup") lang:en',
+        ],
+    },
+    {
+        "name": "Tech, AI & Startups",
+        "category": "tech",
+        "queries": [
+            '(startup OR founder OR layoff OR funding OR "series A") lang:en',
+            '(AI OR "chat gpt" OR OpenAI OR Google AI OR tech) lang:en',
+            '(Apple OR Samsung OR iPhone OR Android OR app) lang:en',
+        ],
+    },
+    {
+        "name": "Money, Scams & Economy",
+        "category": "economy",
+        "queries": [
+            '(scam OR fraud OR "ponzi scheme" OR arrested OR "money laundering") lang:en',
+            '(inflation OR "fuel price" OR "petrol price" OR tax OR GST) lang:en',
+            '(stock market OR sensex OR crypto OR bitcoin OR "real estate") lang:en',
+        ],
+    },
+    {
+        "name": "Education & Exams",
+        "category": "education",
+        "queries": [
+            '(JEE OR NEET OR "board exam" OR CBSE OR ICSE) lang:en',
+            '(college OR university OR admission OR "paper leak" OR exam) lang:en',
+            '(placement OR campus OR IIT OR IIM OR engineering) lang:en',
+        ],
+    },
+    {
+        "name": "Global News Indians Care About",
+        "category": "global",
+        "queries": [
+            '(Trump OR "white house" OR USA OR America) lang:en',
+            '(Elon OR Tesla OR SpaceX OR "H1B" OR immigration) lang:en',
+            '(war OR sanctions OR UN OR NATO OR geopolitics) lang:en',
+        ],
+    },
+    {
+        "name": "Viral & Relatable",
+        "category": "viral",
+        "queries": [
+            '("someone said" OR "this is so" OR "literally me") min_faves:500 lang:en',
+            '(viral OR ratio OR "main character" OR "touch grass") min_faves:500 lang:en',
+            '(bro OR bruh OR "no way" OR "I can\'t") min_faves:1000 lang:en',
+        ],
+    },
+]
+
+
+def get_curated_queries():
+    """
+    Generate curated search queries with daily freshness enforcement.
+    Picks one random sub-query per category (rotates naturally each day).
+    Returns list in the same format as fetch_trending_topics().
+    """
+    since_date = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    queries = []
+    for i, cat in enumerate(CURATED_CATEGORIES):
+        # Pick a random query from this category's pool
+        base_query = random.choice(cat["queries"])
+        full_query = f"{base_query} since:{since_date}"
+
+        queries.append({
+            "name": cat["name"],
+            "query": full_query,
+            "source": "curated",
+            "category": cat["category"],
+            "rank": i + 1,
+        })
+
+    return queries
 
 
 # ─── twitterapi.io Client ────────────────────────────────────────────────────
@@ -74,7 +207,7 @@ def _api_get(endpoint, params=None):
         return -1, str(e)
 
 
-# ─── Trend Fetching ──────────────────────────────────────────────────────────
+# ─── Trend Fetching (with Blocklist) ─────────────────────────────────────────
 
 def _is_english_trend(name):
     """Check if a trend name is likely English (ASCII + basic punctuation)."""
@@ -87,75 +220,73 @@ def _is_english_trend(name):
 
 def fetch_trending_topics():
     """
-    Fetch 15 India + 3 US + 2 UK trending topics.
-    Returns list of dicts: [{"name": "...", "query": "...", "source": "india|us|uk", "rank": N}]
+    Fetch India + US trending topics with blocklist filtering.
+    Iterates through raw trends, skips blocked ones, keeps first N clean ones.
+    Returns list of dicts: [{"name": "...", "query": "...", "source": "...", "category": "trending", "rank": N}]
     """
     trends = []
 
-    # 1. India trends
+    # 1. India trends (fetch top 30, keep first 7 non-blocked)
     print("   🇮🇳 Fetching India trends...")
     status, data = _api_get("/twitter/trends", {"woeid": INDIA_WOEID})
+    india_added = 0
+    india_blocked = 0
     if status == 200 and isinstance(data, dict):
         raw_trends = data.get("trends", [])
-        for t in raw_trends[:INDIA_TREND_COUNT]:
+        for t in raw_trends[:30]:  # Scan top 30 to find 7 good ones
+            if india_added >= INDIA_TREND_COUNT:
+                break
             trend_data = t.get("trend", t)
+            name = trend_data.get("name", "")
+
+            if _is_blocked_trend(name):
+                india_blocked += 1
+                print(f"      🚫 Blocked: {name}")
+                continue
+
             trends.append({
-                "name": trend_data.get("name", ""),
-                "query": trend_data.get("target", {}).get("query", trend_data.get("name", "")),
+                "name": name,
+                "query": trend_data.get("target", {}).get("query", name),
                 "source": "india",
+                "category": "trending",
                 "rank": trend_data.get("rank", len(trends) + 1),
             })
-        print(f"   ✅ Got {len(trends)} India trends")
+            india_added += 1
+        print(f"   ✅ Got {india_added} India trends (blocked {india_blocked})")
     else:
         print(f"   ❌ India trends failed (HTTP {status}): {str(data)[:200]}")
 
     time.sleep(RATE_LIMIT_DELAY)
 
-    # 2. US trends (English-speaking)
+    # 2. US trends (fetch top 15, keep first 3 non-blocked)
     print("   🇺🇸 Fetching US trends...")
     status, data = _api_get("/twitter/trends", {"woeid": US_WOEID})
     us_added = 0
+    us_blocked = 0
     if status == 200 and isinstance(data, dict):
         raw_trends = data.get("trends", [])
-        for t in raw_trends:
+        for t in raw_trends[:15]:  # Scan top 15 to find 3 good ones
             if us_added >= US_TREND_COUNT:
                 break
             trend_data = t.get("trend", t)
             name = trend_data.get("name", "")
+
+            if _is_blocked_trend(name):
+                us_blocked += 1
+                print(f"      🚫 Blocked: {name}")
+                continue
+
             trends.append({
                 "name": name,
                 "query": trend_data.get("target", {}).get("query", name),
                 "source": "us",
+                "category": "trending",
                 "rank": trend_data.get("rank", 0),
             })
             us_added += 1
-        print(f"   ✅ Got {us_added} US trends")
+        print(f"   ✅ Got {us_added} US trends (blocked {us_blocked})")
     else:
         print(f"   ❌ US trends failed (HTTP {status}): {str(data)[:200]}")
-
-    time.sleep(RATE_LIMIT_DELAY)
-
-    # 3. UK trends (English-speaking)
-    print("   🇬🇧 Fetching UK trends...")
-    status, data = _api_get("/twitter/trends", {"woeid": UK_WOEID})
-    uk_added = 0
-    if status == 200 and isinstance(data, dict):
-        raw_trends = data.get("trends", [])
-        for t in raw_trends:
-            if uk_added >= UK_TREND_COUNT:
-                break
-            trend_data = t.get("trend", t)
-            name = trend_data.get("name", "")
-            trends.append({
-                "name": name,
-                "query": trend_data.get("target", {}).get("query", name),
-                "source": "uk",
-                "rank": trend_data.get("rank", 0),
-            })
-            uk_added += 1
-        print(f"   ✅ Got {uk_added} UK trends")
-    else:
-        print(f"   ❌ UK trends failed (HTTP {status}): {str(data)[:200]}")
 
     return trends
 
@@ -198,8 +329,11 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
     """
     time.sleep(RATE_LIMIT_DELAY)
 
+    # If query already contains lang:en, don't add it again
+    search_query = query if "lang:en" in query else f"{query} lang:en"
+
     status, data = _api_get("/twitter/tweet/advanced_search", {
-        "query": f"{query} lang:en",
+        "query": search_query,
         "queryType": "Top",
     })
 
@@ -259,20 +393,24 @@ def search_tweets_for_trend(query, count=10, max_age_hours=None, _retries=3):
     return tweets
 
 
+def _engagement_score(tweet):
+    """Calculate engagement score for global ranking."""
+    likes = tweet.get("likes", 0) or 0
+    retweets = tweet.get("retweets", 0) or 0
+    views = tweet.get("views", 0) or 0
+    return likes + (retweets * 3) + (views / 1000)
+
+
 def _pick_best_tweet(tweets):
     """
     Pick the best English tweet from search results.
     Since we use lang:en in the search query, most tweets should be English.
-    We still do a safety check using the lang field and a basic text check.
+    We still do a safety check using the lang field.
     """
     if not tweets:
         return None
 
-    for tweet in sorted(tweets, key=lambda t: t.get("likes", 0) + t.get("retweets", 0) * 3, reverse=True):
-        # Skip very low engagement tweets
-        if tweet.get("likes", 0) < MIN_LIKES:
-            continue
-
+    for tweet in sorted(tweets, key=_engagement_score, reverse=True):
         # Safety: skip if API explicitly says not English
         lang = tweet.get("lang", "")
         if lang and lang not in ("en", "und", ""):  # "und" = undetermined = OK
@@ -287,25 +425,34 @@ def _pick_best_tweet(tweets):
 # ─── LLM Preprocessor ────────────────────────────────────────────────────────
 
 TWEET_PREPROCESSOR_PROMPT = """
-INPUT: A list of tweets from Twitter/X trending topics.
+INPUT: A list of tweets from Twitter/X trending topics and curated searches.
 
-YOUR JOB: For each tweet, decide if it has COMEDY POTENTIAL, and if yes,
+YOUR JOB: For each tweet, decide if it has COMEDY REPLY POTENTIAL, and if yes,
 extract a SHORT FACTUAL ONE-LINER that a joke engine can use.
 
 RULES:
-1. SKIP tweets about: death, tragedy, natural disasters, prayers/condolences,
-   boring corporate earnings.
-   Mark these as "SKIP" with a reason.
 
-2. KEEP (high priority) tweets about: irony, frustration, absurdity, relatable situations,
-   viral drama, sports fails, price hikes, government decisions, celebrity gossip,
-   tech fails, corporate greed, funny incidents.
+1. ALWAYS SKIP these (mark as "SKIP"):
+   - Death, tragedy, natural disasters, prayers/condolences
+   - Pure religious praise (devotional tweets, guru worship, temple events, birth anniversaries of saints)
+   - Niche foreign sports nobody in India follows (F1, WWE, NFL, NBA, MLB, rugby, MMA/UFC)
+   - Generic fan tweets with no ironic angle ("X is the GOAT", "Happy birthday legend")
+   - Boring corporate earnings or stock market updates
+   - Motivational/inspirational quotes with zero comedy potential
+   - Paid promotional or sponsored content
 
-3. KEEP (lower priority) tweets about: religious events (if there's an ironic angle),
-   motivational/inspirational content (if the situation itself is funny or contradictory),
-   spiritual trends (only if the context is absurd or relatable).
+2. ALWAYS KEEP these (high comedy reply potential):
+   - Government decisions that are absurd or affect daily life (price hikes, weird policies)
+   - Bollywood/celebrity drama, controversies, funny incidents
+   - Cricket moments — especially fails, controversial decisions, fan overreactions
+   - Tech/startup drama — layoffs, product fails, AI hype vs reality
+   - Scams, fraud, or corruption stories (great irony material)
+   - Education/exam drama — paper leaks, impossible cutoffs, student struggles
+   - Relatable daily life observations that went viral
+   - International news Indians actively discuss (Trump, Elon, immigration)
+   - Corporate/workplace culture absurdities
 
-4. For KEPT tweets, extract a FACTUAL one-sentence summary:
+3. For KEPT tweets, extract a FACTUAL one-sentence summary:
    - Write like you're telling a friend what happened
    - Use simple everyday English a 15-year-old would understand
    - If tweet is in Hindi/Hinglish, TRANSLATE to simple English
@@ -313,7 +460,7 @@ RULES:
    - Do NOT add jokes, exaggeration, or opinion — just facts
    - Max 20 words
 
-5. GOOD:
+4. GOOD:
    ✅ "Strickland just got knocked out cold in R1 😭 #UFCHouston"
       → "Sean Strickland lost by first-round knockout at UFC Houston"
    ✅ "Bhai Mumbai Police ne 2160 bacche dhundh liye 🔥🔥"
@@ -321,15 +468,16 @@ RULES:
    ✅ "This guru's ashram is trending because they filed a court case against a meme page"
       → "A spiritual guru's ashram sued a meme page for making fun of them"
 
-6. BAD:
+5. BAD:
    ❌ "The situation is dire and unprecedented" (too formal)
    ❌ "Mumbai police are absolute legends!" (opinion, not fact)
+   ❌ "Jai Shri Ram 🙏 Happy Jayanti" (pure religious praise, no comedy angle)
 
 OUTPUT (valid JSON):
 {
   "results": [
     {"tweet_index": 0, "action": "KEEP", "topic": "factual one-liner here"},
-    {"tweet_index": 1, "action": "SKIP", "reason": "tragedy"},
+    {"tweet_index": 1, "action": "SKIP", "reason": "religious praise"},
     {"tweet_index": 2, "action": "KEEP", "topic": "factual one-liner here"}
   ]
 }
@@ -413,41 +561,48 @@ def preprocess_tweets(tweets_with_trends):
         ]
 
 
-# ─── Full Pipeline ────────────────────────────────────────────────────────────
+# ─── Full Pipeline (v2 — Hybrid) ─────────────────────────────────────────────
 
 def run_twitter_pipeline():
     """
-    Full pipeline: trends → tweets → preprocess → joke generation → save.
+    Full pipeline: trends (blocklisted) + curated queries → global ranking → jokes.
     Returns (topics_with_metadata, jokes_by_topic) tuple.
     """
     print()
     print("=" * 60)
-    print("🐦 TWITTER TRENDING JOKES PIPELINE")
-    print("   15 India + 3 US + 2 UK trends → lang:en search → LLM preprocessing → Jokes")
+    print("🐦 TWITTER TRENDING JOKES PIPELINE (v2 — Hybrid)")
+    print("   Trends (blocklisted) + 8 Curated Categories → Global Ranking → Jokes")
     print("=" * 60)
     print()
 
-    # Step 1: Fetch trends
-    print("🔥 STEP 1: Fetching trending topics...")
+    # ── Step 1: Fetch trends + curated queries ────────────────────────────
+    print("🔥 STEP 1: Fetching sources...")
+    print()
+
+    # 1a. Real-time trends (with blocklist)
+    print("   📊 Fetching trending topics (with blocklist)...")
     trends = fetch_trending_topics()
 
-    if not trends:
-        print("❌ No trends fetched. Aborting.")
-        return [], {}
+    # 1b. Curated category queries
+    print()
+    print("   🎯 Generating curated category queries...")
+    curated = get_curated_queries()
 
-    print(f"\n✅ Got {len(trends)} trends total")
-    for t in trends:
-        flags = {"india": "🇮🇳", "us": "🇺🇸", "uk": "🇬🇧"}
-        flag = flags.get(t["source"], "🌍")
-        print(f"   {flag} #{t['rank']}: {t['name']}")
+    all_sources = trends + curated
 
-    # Step 2: Search tweets for each trend
-    print("\n🔍 STEP 2: Searching top tweets for each trend...")
-    tweets_with_trends = []
+    print(f"\n✅ Got {len(trends)} trends + {len(curated)} curated = {len(all_sources)} total sources")
+    for t in all_sources:
+        icons = {"india": "🇮🇳", "us": "🇺🇸", "curated": "🎯"}
+        icon = icons.get(t["source"], "🌍")
+        print(f"   {icon} {t['name']}: {t['query'][:70]}...")
 
-    for t in trends:
+    # ── Step 2: Search tweets for ALL sources ─────────────────────────────
+    print("\n🔍 STEP 2: Searching top tweets for each source...")
+    all_candidates = []  # [(source_info, tweet), ...]
+
+    for t in all_sources:
         print(f"\n   Searching: {t['name']}...")
-        tweets = search_tweets_for_trend(t["query"], count=5, max_age_hours=48)
+        tweets = search_tweets_for_trend(t["query"], count=10, max_age_hours=48)
 
         # Stop early if credits exhausted
         if tweets == "CREDITS_EXHAUSTED":
@@ -455,27 +610,78 @@ def run_twitter_pipeline():
             break
 
         if tweets:
-            best = _pick_best_tweet(tweets)
-            if best:
-                tweets_with_trends.append({"trend": t, "tweet": best})
-                print(f"   ✅ Best: @{best['author']} ({best['likes']}❤️ {best['retweets']}🔁) — {best['text'][:80]}")
-            else:
-                print(f"   ⚠️ No suitable tweet found")
+            # Keep top 3 tweets from each source (not just the best one)
+            sorted_tweets = sorted(tweets, key=_engagement_score, reverse=True)
+            for tweet in sorted_tweets[:3]:
+                # Safety: skip non-English
+                lang = tweet.get("lang", "")
+                if lang and lang not in ("en", "und", ""):
+                    continue
+                all_candidates.append({"trend": t, "tweet": tweet})
+                print(f"   ✅ @{tweet['author']} ({tweet['likes']}❤️ {tweet['retweets']}🔁) — {tweet['text'][:60]}")
         else:
             print(f"   ⚠️ No tweets found")
 
-    print(f"\n✅ Found {len(tweets_with_trends)} tweets to process")
+    print(f"\n📦 Collected {len(all_candidates)} candidate tweets total")
 
-    # Step 3: LLM preprocessing
-    print("\n🤖 STEP 3: LLM preprocessor — extracting joke topics...")
-    processed = preprocess_tweets(tweets_with_trends)
+    # ── Step 3: Deduplicate + Global Engagement Ranking ───────────────────
+    print("\n🏆 STEP 3: Deduplicating + Global Engagement Ranking...")
+
+    # Deduplicate by tweet ID
+    seen_ids = set()
+    unique_candidates = []
+    for item in all_candidates:
+        tweet_id = item["tweet"]["id"]
+        if tweet_id not in seen_ids:
+            seen_ids.add(tweet_id)
+            unique_candidates.append(item)
+
+    dupes = len(all_candidates) - len(unique_candidates)
+    if dupes:
+        print(f"   🔄 Removed {dupes} duplicate tweets")
+
+    # Sort ALL candidates globally by engagement
+    unique_candidates.sort(key=lambda x: _engagement_score(x["tweet"]), reverse=True)
+
+    # Pick top N with diversity cap (max MAX_PER_CATEGORY per category)
+    category_counts = {}
+    selected = []
+
+    for item in unique_candidates:
+        if len(selected) >= MAX_FINAL_TOPICS:
+            break
+
+        category = item["trend"].get("category", "trending")
+        current_count = category_counts.get(category, 0)
+
+        if current_count >= MAX_PER_CATEGORY:
+            continue  # Skip — already have enough from this category
+
+        selected.append(item)
+        category_counts[category] = current_count + 1
+
+    print(f"   ✅ Selected {len(selected)} diverse tweets (from {len(category_counts)} categories)")
+    for i, item in enumerate(selected):
+        tweet = item["tweet"]
+        score = _engagement_score(tweet)
+        print(f"   #{i+1} [{item['trend']['category']}] @{tweet['author']} "
+              f"({tweet['likes']}❤️ {tweet['retweets']}🔁 score={score:.0f}) — "
+              f"{tweet['text'][:50]}")
+
+    if not selected:
+        print("❌ No candidates after ranking. Aborting.")
+        return [], {}
+
+    # ── Step 4: LLM preprocessing ────────────────────────────────────────
+    print("\n🤖 STEP 4: LLM preprocessor — extracting joke topics...")
+    processed = preprocess_tweets(selected)
 
     # Filter to kept topics only
     kept_topics = [p for p in processed if p["action"] == "KEEP"]
     print(f"\n✅ {len(kept_topics)} topics ready for joke engine")
 
-    # Step 4: Generate jokes for each topic
-    print("\n🔥 STEP 4: Generating jokes for each topic...")
+    # ── Step 5: Generate jokes for each topic ─────────────────────────────
+    print("\n🔥 STEP 5: Generating jokes for each topic...")
     from modules.joke_generator.campaign_generator import search_bridges, generate_from_selected
 
     jokes_by_topic = {}
@@ -511,10 +717,10 @@ def run_twitter_pipeline():
     total = sum(len(v["jokes"]) for v in jokes_by_topic.values())
     print()
     print("=" * 60)
-    print(f"🎯 STEP 4 COMPLETE: {total} jokes from {len(kept_topics)} tweet topics")
+    print(f"🎯 PIPELINE COMPLETE: {total} jokes from {len(kept_topics)} tweet topics")
     print("=" * 60)
 
-    # Step 5: Save results for Streamlit
+    # Step 6: Save results for Streamlit
     _save_results(kept_topics, jokes_by_topic)
 
     return kept_topics, jokes_by_topic
