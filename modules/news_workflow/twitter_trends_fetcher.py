@@ -41,8 +41,9 @@ INDIA_TREND_COUNT = 7     # Was 15, now 7 clean trends after blocklist
 US_TREND_COUNT = 3        # Keep 3 US trends
 
 # How many final topics to pick after global ranking
-MAX_FINAL_TOPICS = 10
-MAX_PER_CATEGORY = 2      # Diversity cap: max 2 tweets from same category
+MAX_FINAL_TOPICS = 12
+MAX_PER_CATEGORY_STRICT = 2   # Initial diversity cap
+MAX_PER_CATEGORY_RELAXED = 4  # Relaxed if we can't fill enough topics
 
 # Results storage
 RESULTS_DIR = Path(PROJECT_ROOT) / "data" / "tweet_jokes"
@@ -85,73 +86,75 @@ CURATED_CATEGORIES = [
         "name": "Indian Politics & Government",
         "category": "politics",
         "queries": [
-            '(india government OR "new policy" OR parliament OR budget) lang:en',
-            '(BJP OR Congress OR Modi OR "supreme court" india) lang:en',
-            '(election OR minister OR "price hike" OR subsidy india) lang:en',
+            'india (government OR policy OR parliament OR budget OR minister) lang:en',
+            '(Modi OR BJP OR Congress) lang:en',
         ],
     },
     {
         "name": "Bollywood & Entertainment",
         "category": "entertainment",
         "queries": [
-            '(bollywood OR "new movie" OR actor OR actress OR trailer) lang:en',
-            '(netflix OR "web series" OR OTT OR "box office") lang:en',
-            '(celebrity OR controversy OR award OR "film festival") lang:en',
+            '(bollywood OR movie OR netflix OR actor) lang:en',
+            '(celebrity OR controversy OR drama OR OTT) lang:en',
         ],
     },
     {
         "name": "Cricket & IPL",
         "category": "cricket",
         "queries": [
-            '(cricket OR IPL OR "team india" OR BCCI) lang:en',
-            '(cricket OR match OR wicket OR century OR "world cup") lang:en',
+            '(cricket OR IPL OR BCCI) lang:en',
         ],
     },
     {
-        "name": "Tech, AI & Startups",
+        "name": "Tech & AI",
         "category": "tech",
         "queries": [
-            '(startup OR founder OR layoff OR funding OR "series A") lang:en',
-            '(AI OR "chat gpt" OR OpenAI OR Google AI OR tech) lang:en',
-            '(Apple OR Samsung OR iPhone OR Android OR app) lang:en',
+            '(AI OR ChatGPT OR OpenAI OR Google OR tech) lang:en min_faves:100',
+            '(startup OR layoff OR founder OR funding) lang:en min_faves:50',
         ],
     },
     {
-        "name": "Money, Scams & Economy",
-        "category": "economy",
+        "name": "Scams & WTF News",
+        "category": "wtf",
         "queries": [
-            '(scam OR fraud OR "ponzi scheme" OR arrested OR "money laundering") lang:en',
-            '(inflation OR "fuel price" OR "petrol price" OR tax OR GST) lang:en',
-            '(stock market OR sensex OR crypto OR bitcoin OR "real estate") lang:en',
+            '(scam OR fraud OR arrested OR caught OR busted) lang:en min_faves:100',
+            '(bizarre OR weird OR shocking OR unbelievable) lang:en min_faves:200',
         ],
     },
     {
-        "name": "Education & Exams",
-        "category": "education",
-        "queries": [
-            '(JEE OR NEET OR "board exam" OR CBSE OR ICSE) lang:en',
-            '(college OR university OR admission OR "paper leak" OR exam) lang:en',
-            '(placement OR campus OR IIT OR IIM OR engineering) lang:en',
-        ],
-    },
-    {
-        "name": "Global News Indians Care About",
+        "name": "Global News",
         "category": "global",
         "queries": [
-            '(Trump OR "white house" OR USA OR America) lang:en',
-            '(Elon OR Tesla OR SpaceX OR "H1B" OR immigration) lang:en',
-            '(war OR sanctions OR UN OR NATO OR geopolitics) lang:en',
+            '(Trump OR Elon OR USA OR America) lang:en min_faves:500',
+            '(breaking news OR world) lang:en min_faves:500',
         ],
     },
     {
         "name": "Viral & Relatable",
         "category": "viral",
         "queries": [
-            '("someone said" OR "this is so" OR "literally me") min_faves:500 lang:en',
-            '(viral OR ratio OR "main character" OR "touch grass") min_faves:500 lang:en',
-            '(bro OR bruh OR "no way" OR "I can\'t") min_faves:1000 lang:en',
+            '(viral OR "went viral" OR "going viral") lang:en min_faves:500',
+            '(funny OR hilarious OR lmao OR bruh) lang:en min_faves:1000',
         ],
     },
+    {
+        "name": "Corporate & Work Life",
+        "category": "work",
+        "queries": [
+            '(boss OR workplace OR salary OR layoff OR hustle) lang:en min_faves:100',
+            '(interview OR hiring OR fired OR resign) lang:en min_faves:100',
+        ],
+    },
+]
+
+# Broad fallback queries — used if initial searches don't yield enough topics
+FALLBACK_QUERIES = [
+    {"name": "Today's Best Tweets", "category": "fallback",
+     "query": 'lang:en min_faves:5000 -filter:replies'},
+    {"name": "Viral India Today", "category": "fallback_india",
+     "query": 'india lang:en min_faves:1000 -filter:replies'},
+    {"name": "Funny Today", "category": "fallback_funny",
+     "query": '(lol OR lmao OR dead OR crying) lang:en min_faves:2000 -filter:replies'},
 ]
 
 
@@ -178,6 +181,21 @@ def get_curated_queries():
         })
 
     return queries
+
+
+def get_fallback_queries():
+    """Broad fallback queries for when main searches don't return enough."""
+    since_date = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+    return [
+        {
+            "name": fb["name"],
+            "query": f"{fb['query']} since:{since_date}",
+            "source": "fallback",
+            "category": fb["category"],
+            "rank": i + 1,
+        }
+        for i, fb in enumerate(FALLBACK_QUERIES)
+    ]
 
 
 # ─── twitterapi.io Client ────────────────────────────────────────────────────
@@ -430,27 +448,25 @@ INPUT: A list of tweets from Twitter/X trending topics and curated searches.
 YOUR JOB: For each tweet, decide if it has COMEDY REPLY POTENTIAL, and if yes,
 extract a SHORT FACTUAL ONE-LINER that a joke engine can use.
 
+IMPORTANT: Be GENEROUS with keeping tweets. When in doubt, KEEP.
+We need at least 8-10 joke topics. Only skip truly unusable content.
+
 RULES:
 
-1. ALWAYS SKIP these (mark as "SKIP"):
+1. SKIP ONLY these (mark as "SKIP"):
    - Death, tragedy, natural disasters, prayers/condolences
-   - Pure religious praise (devotional tweets, guru worship, temple events, birth anniversaries of saints)
-   - Niche foreign sports nobody in India follows (F1, WWE, NFL, NBA, MLB, rugby, MMA/UFC)
-   - Generic fan tweets with no ironic angle ("X is the GOAT", "Happy birthday legend")
-   - Boring corporate earnings or stock market updates
-   - Motivational/inspirational quotes with zero comedy potential
-   - Paid promotional or sponsored content
+   - Pure religious praise with zero ironic angle
+   - Motivational quotes with zero comedy potential
+   - Paid ads or promotional spam
 
-2. ALWAYS KEEP these (high comedy reply potential):
-   - Government decisions that are absurd or affect daily life (price hikes, weird policies)
-   - Bollywood/celebrity drama, controversies, funny incidents
-   - Cricket moments — especially fails, controversial decisions, fan overreactions
-   - Tech/startup drama — layoffs, product fails, AI hype vs reality
-   - Scams, fraud, or corruption stories (great irony material)
-   - Education/exam drama — paper leaks, impossible cutoffs, student struggles
-   - Relatable daily life observations that went viral
-   - International news Indians actively discuss (Trump, Elon, immigration)
-   - Corporate/workplace culture absurdities
+2. KEEP everything else that has ANY comedy angle:
+   - Any news story (politics, economy, tech, sports, entertainment)
+   - Viral moments, funny observations, relatable situations
+   - Celebrity drama, controversies, funny incidents
+   - Absurd situations, ironic outcomes, fails
+   - Sports moments (even niche ones if the tweet itself is funny)
+   - Corporate/workplace culture observations
+   - Any tweet with high engagement — if thousands liked it, there's comedy potential
 
 3. For KEPT tweets, extract a FACTUAL one-sentence summary:
    - Write like you're telling a friend what happened
@@ -460,24 +476,11 @@ RULES:
    - Do NOT add jokes, exaggeration, or opinion — just facts
    - Max 20 words
 
-4. GOOD:
-   ✅ "Strickland just got knocked out cold in R1 😭 #UFCHouston"
-      → "Sean Strickland lost by first-round knockout at UFC Houston"
-   ✅ "Bhai Mumbai Police ne 2160 bacche dhundh liye 🔥🔥"
-      → "Mumbai police found 2,160 out of 2,182 missing children"
-   ✅ "This guru's ashram is trending because they filed a court case against a meme page"
-      → "A spiritual guru's ashram sued a meme page for making fun of them"
-
-5. BAD:
-   ❌ "The situation is dire and unprecedented" (too formal)
-   ❌ "Mumbai police are absolute legends!" (opinion, not fact)
-   ❌ "Jai Shri Ram 🙏 Happy Jayanti" (pure religious praise, no comedy angle)
-
 OUTPUT (valid JSON):
 {
   "results": [
     {"tweet_index": 0, "action": "KEEP", "topic": "factual one-liner here"},
-    {"tweet_index": 1, "action": "SKIP", "reason": "religious praise"},
+    {"tweet_index": 1, "action": "SKIP", "reason": "tragedy"},
     {"tweet_index": 2, "action": "KEEP", "topic": "factual one-liner here"}
   ]
 }
@@ -610,19 +613,45 @@ def run_twitter_pipeline():
             break
 
         if tweets:
-            # Keep top 3 tweets from each source (not just the best one)
+            # Keep top 5 tweets from each source for more candidates
             sorted_tweets = sorted(tweets, key=_engagement_score, reverse=True)
-            for tweet in sorted_tweets[:3]:
+            kept_from_source = 0
+            for tweet in sorted_tweets:
+                if kept_from_source >= 5:
+                    break
                 # Safety: skip non-English
                 lang = tweet.get("lang", "")
                 if lang and lang not in ("en", "und", ""):
                     continue
                 all_candidates.append({"trend": t, "tweet": tweet})
-                print(f"   ✅ @{tweet['author']} ({tweet['likes']}❤️ {tweet['retweets']}🔁) — {tweet['text'][:60]}")
+                kept_from_source += 1
+                if kept_from_source <= 2:  # Only print first 2 to keep logs clean
+                    print(f"   ✅ @{tweet['author']} ({tweet['likes']}❤️ {tweet['retweets']}🔁) — {tweet['text'][:60]}")
+            if kept_from_source > 2:
+                print(f"   ... +{kept_from_source - 2} more tweets")
         else:
             print(f"   ⚠️ No tweets found")
 
     print(f"\n📦 Collected {len(all_candidates)} candidate tweets total")
+
+    # ── Step 2b: Fallback if not enough candidates ────────────────────────
+    if len(all_candidates) < MAX_FINAL_TOPICS * 2:
+        print(f"\n   ⚠️ Only {len(all_candidates)} candidates — running fallback broad searches...")
+        fallbacks = get_fallback_queries()
+        for fb in fallbacks:
+            print(f"\n   🔄 Fallback: {fb['name']}...")
+            tweets = search_tweets_for_trend(fb["query"], count=10, max_age_hours=48)
+            if tweets == "CREDITS_EXHAUSTED":
+                break
+            if tweets:
+                sorted_tweets = sorted(tweets, key=_engagement_score, reverse=True)
+                for tweet in sorted_tweets[:5]:
+                    lang = tweet.get("lang", "")
+                    if lang and lang not in ("en", "und", ""):
+                        continue
+                    all_candidates.append({"trend": fb, "tweet": tweet})
+                print(f"   ✅ Added {min(5, len(tweets))} fallback tweets")
+        print(f"\n📦 Total after fallbacks: {len(all_candidates)} candidates")
 
     # ── Step 3: Deduplicate + Global Engagement Ranking ───────────────────
     print("\n🏆 STEP 3: Deduplicating + Global Engagement Ranking...")
@@ -643,24 +672,41 @@ def run_twitter_pipeline():
     # Sort ALL candidates globally by engagement
     unique_candidates.sort(key=lambda x: _engagement_score(x["tweet"]), reverse=True)
 
-    # Pick top N with diversity cap (max MAX_PER_CATEGORY per category)
+    # Adaptive diversity cap: try strict first, then relax if needed
+    def _select_diverse(candidates, max_per_cat, target):
+        """Pick top N candidates with per-category cap."""
+        cat_counts = {}
+        result = []
+        for item in candidates:
+            if len(result) >= target:
+                break
+            cat = item["trend"].get("category", "trending")
+            if cat_counts.get(cat, 0) >= max_per_cat:
+                continue
+            result.append(item)
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        return result
+
+    # Try strict cap first (max 2/category)
+    selected = _select_diverse(unique_candidates, MAX_PER_CATEGORY_STRICT, MAX_FINAL_TOPICS)
+
+    # If not enough, relax the cap (max 4/category)
+    if len(selected) < MAX_FINAL_TOPICS:
+        print(f"   ⚠️ Only {len(selected)} with strict cap — relaxing diversity...")
+        selected = _select_diverse(unique_candidates, MAX_PER_CATEGORY_RELAXED, MAX_FINAL_TOPICS)
+
+    # If STILL not enough, take anything we can get (no cap)
+    if len(selected) < MAX_FINAL_TOPICS:
+        print(f"   ⚠️ Only {len(selected)} with relaxed cap — taking all available...")
+        selected = unique_candidates[:MAX_FINAL_TOPICS]
+
+    # Count categories for logging
     category_counts = {}
-    selected = []
+    for item in selected:
+        cat = item["trend"].get("category", "trending")
+        category_counts[cat] = category_counts.get(cat, 0) + 1
 
-    for item in unique_candidates:
-        if len(selected) >= MAX_FINAL_TOPICS:
-            break
-
-        category = item["trend"].get("category", "trending")
-        current_count = category_counts.get(category, 0)
-
-        if current_count >= MAX_PER_CATEGORY:
-            continue  # Skip — already have enough from this category
-
-        selected.append(item)
-        category_counts[category] = current_count + 1
-
-    print(f"   ✅ Selected {len(selected)} diverse tweets (from {len(category_counts)} categories)")
+    print(f"   ✅ Selected {len(selected)} tweets (from {len(category_counts)} categories)")
     for i, item in enumerate(selected):
         tweet = item["tweet"]
         score = _engagement_score(tweet)
