@@ -12,7 +12,7 @@ import requests
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 GRAPH_API_URL = "https://graph.facebook.com/v22.0"
-RUPLOAD_URL = "https://rupload.facebook.com/ig-api-upload/v22.0"
+RUPLOAD_URL = "https://rupload.facebook.com/ig-api-upload"
 
 STATUS_CHECK_INTERVAL = 5
 STATUS_CHECK_MAX_RETRIES = 60

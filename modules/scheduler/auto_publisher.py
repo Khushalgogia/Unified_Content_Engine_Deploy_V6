@@ -33,7 +33,7 @@ CHECK_INTERVAL = 60  # seconds between checks
 
 # Instagram Graph API
 GRAPH_API_URL = "https://graph.facebook.com/v22.0"
-RUPLOAD_URL = "https://rupload.facebook.com/ig-api-upload/v22.0"
+RUPLOAD_URL = "https://rupload.facebook.com/ig-api-upload"
 
 # Twitter API
 TWITTER_API_BASE = "https://api.twitter.com/2"
