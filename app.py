@@ -774,18 +774,44 @@ elif page == "📸 Post to Instagram":
         if ig_post_btn:
             with st.spinner(f"📤 Uploading Reel to {IG_ACCOUNT_OPTIONS[selected_ig_account]['label']}..."):
                 try:
+                    # Upload to Supabase Storage first to get a public URL
+                    # (required because rupload binary upload is broken for this app)
+                    from supabase import create_client
+                    sb_url = os.environ.get("SUPABASE_URL", "")
+                    sb_key = os.environ.get("SUPABASE_KEY", "")
+                    sb = create_client(sb_url, sb_key)
+                    temp_name = f"ig_post_now_{os.path.basename(ig_video_path)}"
+                    with open(ig_video_path, "rb") as vf:
+                        video_bytes = vf.read()
+                    try:
+                        sb.storage.from_("ready_to_publish").remove([temp_name])
+                    except Exception:
+                        pass
+                    sb.storage.from_("ready_to_publish").upload(
+                        path=temp_name, file=video_bytes,
+                        file_options={"content-type": "video/mp4"},
+                    )
+                    public_video_url = f"{sb_url}/storage/v1/object/public/ready_to_publish/{temp_name}"
+
                     from modules.video_studio.uploader import upload_reel
                     result = upload_reel(
                         access_token=ig_token,
                         ig_user_id=ig_account_id,
                         file_path=ig_video_path,
                         caption=ig_caption,
+                        video_url=public_video_url,
                     )
                     permalink = result.get("permalink", "")
                     if permalink:
                         st.success(f"✅ Posted! [View →]({permalink})")
                     else:
                         st.success("✅ Posted successfully!")
+
+                    # Clean up temp storage
+                    try:
+                        sb.storage.from_("ready_to_publish").remove([temp_name])
+                    except Exception:
+                        pass
                 except Exception as e:
                     st.error(f"❌ Upload failed: {e}")
 
