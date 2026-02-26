@@ -60,6 +60,36 @@ def initialize_upload(access_token, ig_user_id, file_path, caption=""):
     return container_id
 
 
+# ─── Step 1b: Initialize Upload Container (video_url method) ─────────────────
+
+def initialize_upload_with_url(access_token, ig_user_id, video_url, caption=""):
+    """Create a media container using a public video URL (non-resumable upload)."""
+    url = f"{GRAPH_API_URL}/{ig_user_id}/media"
+    params = {
+        "media_type": "REELS",
+        "video_url": video_url,
+        "caption": caption,
+        "access_token": access_token,
+    }
+
+    print(f"   📦 Creating container (video_url method)...")
+    print(f"      URL: {video_url[:80]}{'...' if len(video_url) > 80 else ''}")
+
+    response = requests.post(url, params=params)
+    data = response.json()
+
+    if "id" not in data:
+        error_msg = data.get("error", {}).get("message", "Unknown error")
+        raise UploadError(
+            f"Failed to create media container: {error_msg}",
+            api_response=data
+        )
+
+    container_id = data["id"]
+    print(f"   ✅ Container created: {container_id}")
+    return container_id
+
+
 # ─── Step 2: Upload Binary File ──────────────────────────────────────────────
 
 def upload_file(access_token, container_id, file_path):
@@ -183,26 +213,39 @@ def get_permalink(access_token, media_id):
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
-def upload_reel(access_token, ig_user_id, file_path, caption=""):
+def upload_reel(access_token, ig_user_id, file_path, caption="", video_url=None):
     """
-    Full upload pipeline: init → upload → poll → publish → permalink.
+    Full upload pipeline.
+    If video_url is provided: uses non-resumable video_url method (recommended).
+    Otherwise: falls back to resumable upload protocol via rupload.
     """
-    if not os.path.exists(file_path):
+    if not video_url and not os.path.exists(file_path):
         raise FileNotFoundError(f"Video file not found: {file_path}")
 
-    if not file_path.lower().endswith(".mp4"):
+    if not video_url and file_path and not file_path.lower().endswith(".mp4"):
         raise ValueError(f"Only .mp4 files are supported. Got: {file_path}")
 
-    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
     print(f"\n{'='*60}")
     print(f"📤 INSTAGRAM REEL UPLOAD")
     print(f"{'='*60}")
-    print(f"   File: {os.path.basename(file_path)} ({file_size_mb:.1f} MB)")
+    if video_url:
+        print(f"   Method: video_url (non-resumable)")
+        print(f"   URL: {video_url[:80]}{'...' if len(video_url) > 80 else ''}")
+    elif file_path:
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        print(f"   Method: resumable (rupload)")
+        print(f"   File: {os.path.basename(file_path)} ({file_size_mb:.1f} MB)")
     print(f"   Caption: {caption[:80]}{'...' if len(caption) > 80 else ''}")
     print()
 
-    container_id = initialize_upload(access_token, ig_user_id, file_path, caption)
-    upload_file(access_token, container_id, file_path)
+    if video_url:
+        # ── Non-resumable upload via video_url ─────────────────────────
+        container_id = initialize_upload_with_url(access_token, ig_user_id, video_url, caption)
+    else:
+        # ── Resumable upload via rupload (legacy fallback) ─────────────
+        container_id = initialize_upload(access_token, ig_user_id, file_path, caption)
+        upload_file(access_token, container_id, file_path)
+
     check_status(access_token, container_id)
     media_id = publish(access_token, ig_user_id, container_id)
     permalink = get_permalink(access_token, media_id)

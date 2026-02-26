@@ -82,22 +82,48 @@ def _get_ig_config(account="khushal_page"):
     return token, account_id
 
 
-def _publish_instagram(video_path, caption, account="khushal_page"):
-    """Full Instagram Reel upload pipeline."""
+def _publish_instagram(video_path, caption, account="khushal_page", video_url=None):
+    """
+    Full Instagram Reel upload pipeline using video_url method.
+    If video_url is provided, it's passed directly to the Graph API (no binary upload).
+    """
     token, account_id = _get_ig_config(account)
     if not token:
         raise ValueError("Instagram access token not configured")
     if not account_id:
         raise ValueError(f"Instagram Business ID not configured for '{account}'")
 
-    file_size = os.path.getsize(video_path)
+    # If no video_url provided, we need to get a public URL
+    if not video_url and video_path:
+        # Upload to Supabase Storage temporarily to get a public URL
+        try:
+            supabase = _get_supabase()
+            temp_name = f"temp_ig_upload_{os.path.basename(video_path)}"
+            with open(video_path, "rb") as f:
+                video_bytes = f.read()
+            try:
+                supabase.storage.from_("ready_to_publish").remove([temp_name])
+            except Exception:
+                pass
+            supabase.storage.from_("ready_to_publish").upload(
+                path=temp_name, file=video_bytes,
+                file_options={"content-type": "video/mp4"},
+            )
+            sb_url = os.environ.get("SUPABASE_URL", "")
+            video_url = f"{sb_url}/storage/v1/object/public/ready_to_publish/{temp_name}"
+            logger.info(f"☁️ Uploaded to temp storage: {temp_name}")
+        except Exception as e:
+            raise Exception(f"Cannot create public video URL for Instagram upload: {e}")
 
-    # Step 1: Create container
+    if not video_url:
+        raise ValueError("No video URL available for Instagram upload")
+
+    # Step 1: Create container with video_url (non-resumable)
     resp = http_requests.post(
         f"{GRAPH_API_URL}/{account_id}/media",
         params={
             "media_type": "REELS",
-            "upload_type": "resumable",
+            "video_url": video_url,
             "caption": caption,
             "access_token": token,
         },
@@ -107,22 +133,7 @@ def _publish_instagram(video_path, caption, account="khushal_page"):
         raise Exception(f"Container creation failed: {data}")
     container_id = data["id"]
 
-    # Step 2: Upload binary
-    with open(video_path, "rb") as f:
-        resp = http_requests.post(
-            f"{RUPLOAD_URL}/{container_id}",
-            headers={
-                "Authorization": f"OAuth {token}",
-                "offset": "0",
-                "file_size": str(file_size),
-                "Content-Type": "application/octet-stream",
-            },
-            data=f,
-        )
-    if resp.status_code != 200:
-        raise Exception(f"Upload failed: {resp.json()}")
-
-    # Step 3: Poll for processing
+    # Step 2: Poll for processing (Instagram downloads the video itself)
     for attempt in range(60):
         resp = http_requests.get(
             f"{GRAPH_API_URL}/{container_id}",
@@ -137,7 +148,7 @@ def _publish_instagram(video_path, caption, account="khushal_page"):
     else:
         raise Exception("Processing timeout (300s)")
 
-    # Step 4: Publish
+    # Step 3: Publish
     resp = http_requests.post(
         f"{GRAPH_API_URL}/{account_id}/media_publish",
         params={"creation_id": container_id, "access_token": token},
@@ -356,9 +367,9 @@ def publish_due_posts():
 
             # Publish based on platform
             if platform == "instagram":
-                if not video_path:
+                if not video_url and not video_path:
                     raise ValueError("Instagram post requires a video")
-                _publish_instagram(video_path, caption, account=instagram_account)
+                _publish_instagram(video_path, caption, account=instagram_account, video_url=video_url)
 
             elif platform == "twitter_text":
                 _publish_tweet_text(caption, account=twitter_account, reply_to_tweet_id=reply_to_tweet_id)

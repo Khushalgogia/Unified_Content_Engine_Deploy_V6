@@ -121,8 +121,12 @@ def download_video(url, suffix=".mp4"):
 
 # ─── Instagram Publishing ────────────────────────────────────────────────────
 
-def publish_to_instagram(video_path, caption, account="khushal_page"):
-    """Full Instagram Reel upload pipeline: init → upload → poll → publish."""
+def publish_to_instagram(video_path, caption, account="khushal_page", video_url=None):
+    """
+    Full Instagram Reel upload pipeline using video_url method.
+    If video_url is provided, it's passed directly to the Graph API (no binary upload).
+    If only video_path is provided, we upload it to a temporary public URL first.
+    """
     if not IG_ACCESS_TOKEN:
         raise ValueError("Instagram access token not configured")
 
@@ -132,15 +136,38 @@ def publish_to_instagram(video_path, caption, account="khushal_page"):
     ig_account_id = acct["id"]
     print(f"   📸 Posting to: {acct.get('label', account)}")
 
-    file_size = os.path.getsize(video_path)
+    # If no video_url provided but we have a local file, we need a public URL
+    # In the scheduled post flow, video_url is always available from Supabase Storage
+    if not video_url and video_path:
+        # Try to get a public URL by uploading to Supabase Storage temporarily
+        try:
+            supabase = get_supabase()
+            temp_name = f"temp_ig_upload_{os.path.basename(video_path)}"
+            with open(video_path, "rb") as f:
+                video_bytes = f.read()
+            try:
+                supabase.storage.from_(BUCKET_NAME).remove([temp_name])
+            except Exception:
+                pass
+            supabase.storage.from_(BUCKET_NAME).upload(
+                path=temp_name, file=video_bytes,
+                file_options={"content-type": "video/mp4"},
+            )
+            video_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{temp_name}"
+            print(f"   ☁️ Uploaded to temp storage: {temp_name}")
+        except Exception as e:
+            raise Exception(f"Cannot create public video URL for Instagram upload: {e}")
 
-    # Step 1: Initialize container
-    print(f"   📦 Creating Instagram container...")
+    if not video_url:
+        raise ValueError("No video URL available for Instagram upload")
+
+    # Step 1: Create container with video_url (non-resumable — no rupload needed)
+    print(f"   📦 Creating Instagram container (video_url method)...")
     resp = http_requests.post(
         f"{GRAPH_API_URL}/{ig_account_id}/media",
         params={
             "media_type": "REELS",
-            "upload_type": "resumable",
+            "video_url": video_url,
             "caption": caption,
             "access_token": IG_ACCESS_TOKEN,
         },
@@ -151,24 +178,7 @@ def publish_to_instagram(video_path, caption, account="khushal_page"):
     container_id = data["id"]
     print(f"   ✅ Container: {container_id}")
 
-    # Step 2: Upload binary
-    print(f"   📤 Uploading video ({file_size / (1024*1024):.1f} MB)...")
-    with open(video_path, "rb") as f:
-        resp = http_requests.post(
-            f"{RUPLOAD_URL}/{container_id}",
-            headers={
-                "Authorization": f"OAuth {IG_ACCESS_TOKEN}",
-                "offset": "0",
-                "file_size": str(file_size),
-                "Content-Type": "application/octet-stream",
-            },
-            data=f,
-        )
-    if resp.status_code != 200:
-        raise Exception(f"Upload failed: {resp.json()}")
-    print(f"   ✅ Upload complete")
-
-    # Step 3: Poll for processing
+    # Step 2: Poll for processing (Instagram downloads the video itself)
     print(f"   🔄 Waiting for processing...")
     import time
     for attempt in range(60):
@@ -186,7 +196,7 @@ def publish_to_instagram(video_path, caption, account="khushal_page"):
     else:
         raise Exception("Processing timeout (300s)")
 
-    # Step 4: Publish
+    # Step 3: Publish
     print(f"   📢 Publishing Reel...")
     resp = http_requests.post(
         f"{GRAPH_API_URL}/{ig_account_id}/media_publish",
@@ -385,9 +395,9 @@ def publish_pending_posts():
 
             # Publish based on platform
             if platform == "instagram":
-                if not video_path:
+                if not video_url and not video_path:
                     raise ValueError("Instagram post requires a video")
-                publish_to_instagram(video_path, caption, account=instagram_account)
+                publish_to_instagram(video_path, caption, account=instagram_account, video_url=video_url)
 
             elif platform == "twitter_text":
                 print(f"   🐦 Posting from: {twitter_account}")
