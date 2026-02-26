@@ -159,7 +159,10 @@ def check_status(access_token, container_id):
                 api_response=data
             )
 
-        print(f"      ⏳ Status: {status_code} (attempt {attempt}/{STATUS_CHECK_MAX_RETRIES})")
+        if status_code == "IN_PROGRESS":
+            print(f"      ⏳ Processing... (attempt {attempt}/{STATUS_CHECK_MAX_RETRIES})")
+        else:
+            print(f"      ⏳ Status: {status_code} (attempt {attempt}/{STATUS_CHECK_MAX_RETRIES})")
         time.sleep(STATUS_CHECK_INTERVAL)
 
     raise UploadError(
@@ -171,7 +174,7 @@ def check_status(access_token, container_id):
 # ─── Step 4: Publish ─────────────────────────────────────────────────────────
 
 def publish(access_token, ig_user_id, container_id):
-    """Publish the processed media container."""
+    """Publish the processed media container. Retries up to 3 times."""
     url = f"{GRAPH_API_URL}/{ig_user_id}/media_publish"
     params = {
         "creation_id": container_id,
@@ -180,19 +183,41 @@ def publish(access_token, ig_user_id, container_id):
 
     print(f"   📢 Publishing Reel...")
 
-    response = requests.post(url, params=params)
-    data = response.json()
+    # Retry publish up to 3 times — Instagram may not be ready immediately after FINISHED
+    for attempt in range(1, 4):
+        if attempt > 1:
+            print(f"      🔄 Retry {attempt}/3 (waiting 10s)...")
+            time.sleep(10)
 
-    if "id" not in data:
-        error_msg = data.get("error", {}).get("message", "Unknown error")
+        response = requests.post(url, params=params)
+        data = response.json()
+
+        if "id" in data:
+            media_id = data["id"]
+            print(f"   ✅ Published! Media ID: {media_id}")
+            return media_id
+
+        error_detail = data.get("error", {})
+        error_msg = error_detail.get("message", "Unknown error")
+        error_code = error_detail.get("code", "")
+
+        # If "Invalid parameter" or "not ready", retry
+        if "invalid" in error_msg.lower() or error_code in (2207026, 2207027):
+            print(f"      ⚠️ Not ready yet: {error_msg}")
+            continue
+
+        # Other errors: fail immediately
+        print(f"   ❌ Publish error: {data}")
         raise UploadError(
             f"Publish failed: {error_msg}",
             api_response=data
         )
 
-    media_id = data["id"]
-    print(f"   ✅ Published! Media ID: {media_id}")
-    return media_id
+    # All retries exhausted
+    raise UploadError(
+        f"Publish failed after 3 retries: {error_msg}",
+        api_response=data
+    )
 
 
 # ─── Bonus: Get Permalink ────────────────────────────────────────────────────
@@ -247,6 +272,10 @@ def upload_reel(access_token, ig_user_id, file_path, caption="", video_url=None)
         upload_file(access_token, container_id, file_path)
 
     check_status(access_token, container_id)
+
+    # Small delay — Instagram may need a moment after FINISHED before publish works
+    time.sleep(5)
+
     media_id = publish(access_token, ig_user_id, container_id)
     permalink = get_permalink(access_token, media_id)
 
