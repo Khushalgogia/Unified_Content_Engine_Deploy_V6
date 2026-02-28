@@ -86,6 +86,7 @@ def _publish_instagram(video_path, caption, account="khushal_page", video_url=No
     """
     Full Instagram Reel upload pipeline using video_url method.
     If video_url is provided, it's passed directly to the Graph API (no binary upload).
+    Includes retry logic for transient processing errors.
     """
     token, account_id = _get_ig_config(account)
     if not token:
@@ -95,7 +96,6 @@ def _publish_instagram(video_path, caption, account="khushal_page", video_url=No
 
     # If no video_url provided, we need to get a public URL
     if not video_url and video_path:
-        # Upload to Supabase Storage temporarily to get a public URL
         try:
             supabase = _get_supabase()
             temp_name = f"temp_ig_upload_{os.path.basename(video_path)}"
@@ -111,53 +111,80 @@ def _publish_instagram(video_path, caption, account="khushal_page", video_url=No
             )
             sb_url = os.environ.get("SUPABASE_URL", "")
             video_url = f"{sb_url}/storage/v1/object/public/ready_to_publish/{temp_name}"
-            logger.info(f"☁️ Uploaded to temp storage: {temp_name}")
+            logger.info(f"\u2601\ufe0f Uploaded to temp storage: {temp_name}")
         except Exception as e:
             raise Exception(f"Cannot create public video URL for Instagram upload: {e}")
 
     if not video_url:
         raise ValueError("No video URL available for Instagram upload")
 
-    # Step 1: Create container with video_url (non-resumable)
-    resp = http_requests.post(
-        f"{GRAPH_API_URL}/{account_id}/media",
-        params={
-            "media_type": "REELS",
-            "video_url": video_url,
-            "caption": caption,
-            "access_token": token,
-        },
-    )
-    data = resp.json()
-    if "id" not in data:
-        raise Exception(f"Container creation failed: {data}")
-    container_id = data["id"]
+    last_error = None
 
-    # Step 2: Poll for processing (Instagram downloads the video itself)
-    for attempt in range(60):
-        resp = http_requests.get(
-            f"{GRAPH_API_URL}/{container_id}",
-            params={"fields": "status_code,status", "access_token": token},
+    # Retry up to 2 times for transient processing errors (e.g. App ID mismatch)
+    for attempt in range(1, 3):
+        if attempt > 1:
+            logger.info(f"\ud83d\udd04 Retry {attempt}/2 \u2014 creating fresh container...")
+            time.sleep(10)
+
+        # Step 1: Create container with video_url (non-resumable)
+        resp = http_requests.post(
+            f"{GRAPH_API_URL}/{account_id}/media",
+            params={
+                "media_type": "REELS",
+                "video_url": video_url,
+                "caption": caption,
+                "access_token": token,
+            },
         )
-        status = resp.json().get("status_code", "UNKNOWN")
-        if status == "FINISHED":
-            break
-        if status in ("ERROR", "EXPIRED"):
-            raise Exception(f"Processing failed: {resp.json()}")
+        data = resp.json()
+        if "id" not in data:
+            raise Exception(f"Container creation failed: {data}")
+        container_id = data["id"]
+
+        # Step 2: Poll for processing
+        processing_ok = False
+        for poll in range(60):
+            resp = http_requests.get(
+                f"{GRAPH_API_URL}/{container_id}",
+                params={"fields": "status_code,status", "access_token": token},
+            )
+            status = resp.json().get("status_code", "UNKNOWN")
+            if status == "FINISHED":
+                processing_ok = True
+                break
+            if status in ("ERROR", "EXPIRED"):
+                last_error = f"Processing failed: {resp.json()}"
+                logger.warning(f"\u26a0\ufe0f {last_error}")
+                break
+            time.sleep(5)
+        else:
+            last_error = "Processing timeout (300s)"
+            logger.warning(f"\u26a0\ufe0f {last_error}")
+
+        if not processing_ok:
+            continue  # Retry with fresh container
+
+        # Small delay before publish
         time.sleep(5)
-    else:
-        raise Exception("Processing timeout (300s)")
 
-    # Step 3: Publish
-    resp = http_requests.post(
-        f"{GRAPH_API_URL}/{account_id}/media_publish",
-        params={"creation_id": container_id, "access_token": token},
-    )
-    data = resp.json()
-    if "id" not in data:
-        raise Exception(f"Publish failed: {data}")
+        # Step 3: Publish (with publish retry)
+        for pub_attempt in range(1, 4):
+            if pub_attempt > 1:
+                time.sleep(10)
+            resp = http_requests.post(
+                f"{GRAPH_API_URL}/{account_id}/media_publish",
+                params={"creation_id": container_id, "access_token": token},
+            )
+            data = resp.json()
+            if "id" in data:
+                return data["id"]
+            error_msg = data.get("error", {}).get("message", "")
+            if "invalid" in error_msg.lower() or "not ready" in error_msg.lower():
+                continue
+            last_error = f"Publish failed: {data}"
+            break
 
-    return data["id"]
+    raise Exception(last_error or "Instagram upload failed after all retries")
 
 
 # ─── Twitter Publishing ─────────────────────────────────────────────────────
@@ -195,7 +222,9 @@ def _get_twitter_oauth1(account="account_1"):
 
 
 def _publish_tweet_text(text, account="account_1", reply_to_tweet_id=None):
-    """Post a text-only tweet. Optionally as a reply."""
+    """Post a text-only tweet. Optionally as a reply.
+    Retries with timestamp suffix on 403 (duplicate content).
+    """
     auth = _get_twitter_oauth1(account)
     payload = {"text": text}
     if reply_to_tweet_id:
@@ -208,6 +237,25 @@ def _publish_tweet_text(text, account="account_1", reply_to_tweet_id=None):
     )
     if resp.status_code == 201:
         return resp.json().get("data", {}).get("id")
+
+    # Handle 403 — often means duplicate content
+    if resp.status_code == 403:
+        logger.warning(f"Got 403 (likely duplicate). Retrying with timestamp...")
+        suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
+        modified_text = text[:280 - len(suffix)] + suffix
+        payload2 = {"text": modified_text}
+        if reply_to_tweet_id:
+            payload2["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
+        resp2 = http_requests.post(
+            f"{TWITTER_API_BASE}/tweets",
+            json=payload2,
+            auth=auth,
+            timeout=30,
+        )
+        if resp2.status_code == 201:
+            return resp2.json().get("data", {}).get("id")
+        raise Exception(f"Tweet failed after retry (HTTP {resp2.status_code}): {resp2.text}")
+
     raise Exception(f"Tweet failed (HTTP {resp.status_code}): {resp.text}")
 
 
@@ -282,7 +330,9 @@ def _upload_twitter_media(video_path, account="account_1"):
 
 
 def _publish_tweet_with_video(text, video_path, account="account_1", reply_to_tweet_id=None):
-    """Upload video and post tweet. Optionally as a reply."""
+    """Upload video and post tweet. Optionally as a reply.
+    Retries with timestamp suffix on 403 (duplicate content).
+    """
     media_id = _upload_twitter_media(video_path, account)
     auth = _get_twitter_oauth1(account)
     payload = {"text": text, "media": {"media_ids": [media_id]}}
@@ -296,6 +346,25 @@ def _publish_tweet_with_video(text, video_path, account="account_1", reply_to_tw
     )
     if resp.status_code == 201:
         return resp.json().get("data", {}).get("id")
+
+    # Handle 403 — often means duplicate content
+    if resp.status_code == 403:
+        logger.warning(f"Got 403 (likely duplicate). Retrying with timestamp...")
+        suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
+        modified_text = text[:280 - len(suffix)] + suffix
+        payload2 = {"text": modified_text, "media": {"media_ids": [media_id]}}
+        if reply_to_tweet_id:
+            payload2["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
+        resp2 = http_requests.post(
+            f"{TWITTER_API_BASE}/tweets",
+            json=payload2,
+            auth=auth,
+            timeout=30,
+        )
+        if resp2.status_code == 201:
+            return resp2.json().get("data", {}).get("id")
+        raise Exception(f"Tweet+video failed after retry (HTTP {resp2.status_code}): {resp2.text}")
+
     raise Exception(f"Tweet+video failed (HTTP {resp.status_code}): {resp.text}")
 
 

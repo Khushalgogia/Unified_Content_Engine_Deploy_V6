@@ -126,6 +126,7 @@ def publish_to_instagram(video_path, caption, account="khushal_page", video_url=
     Full Instagram Reel upload pipeline using video_url method.
     If video_url is provided, it's passed directly to the Graph API (no binary upload).
     If only video_path is provided, we upload it to a temporary public URL first.
+    Includes retry logic for transient processing errors.
     """
     if not IG_ACCESS_TOKEN:
         raise ValueError("Instagram access token not configured")
@@ -137,9 +138,7 @@ def publish_to_instagram(video_path, caption, account="khushal_page", video_url=
     print(f"   📸 Posting to: {acct.get('label', account)}")
 
     # If no video_url provided but we have a local file, we need a public URL
-    # In the scheduled post flow, video_url is always available from Supabase Storage
     if not video_url and video_path:
-        # Try to get a public URL by uploading to Supabase Storage temporarily
         try:
             supabase = get_supabase()
             temp_name = f"temp_ig_upload_{os.path.basename(video_path)}"
@@ -161,54 +160,83 @@ def publish_to_instagram(video_path, caption, account="khushal_page", video_url=
     if not video_url:
         raise ValueError("No video URL available for Instagram upload")
 
-    # Step 1: Create container with video_url (non-resumable — no rupload needed)
-    print(f"   📦 Creating Instagram container (video_url method)...")
-    resp = http_requests.post(
-        f"{GRAPH_API_URL}/{ig_account_id}/media",
-        params={
-            "media_type": "REELS",
-            "video_url": video_url,
-            "caption": caption,
-            "access_token": IG_ACCESS_TOKEN,
-        },
-    )
-    data = resp.json()
-    if "id" not in data:
-        raise Exception(f"Container creation failed: {data}")
-    container_id = data["id"]
-    print(f"   ✅ Container: {container_id}")
-
-    # Step 2: Poll for processing (Instagram downloads the video itself)
-    print(f"   🔄 Waiting for processing...")
     import time
-    for attempt in range(60):
-        resp = http_requests.get(
-            f"{GRAPH_API_URL}/{container_id}",
-            params={"fields": "status_code,status", "access_token": IG_ACCESS_TOKEN},
+    last_error = None
+
+    # Retry up to 2 times for transient processing errors (e.g. App ID mismatch)
+    for attempt in range(1, 3):
+        if attempt > 1:
+            print(f"   🔄 Retry {attempt}/2 — creating fresh container...")
+            time.sleep(10)
+
+        # Step 1: Create container with video_url
+        print(f"   📦 Creating Instagram container (video_url method)...")
+        resp = http_requests.post(
+            f"{GRAPH_API_URL}/{ig_account_id}/media",
+            params={
+                "media_type": "REELS",
+                "video_url": video_url,
+                "caption": caption,
+                "access_token": IG_ACCESS_TOKEN,
+            },
         )
-        status = resp.json().get("status_code", "UNKNOWN")
-        if status == "FINISHED":
-            print(f"   ✅ Processing complete ({attempt * 5}s)")
-            break
-        if status in ("ERROR", "EXPIRED"):
-            raise Exception(f"Processing failed: {resp.json()}")
+        data = resp.json()
+        if "id" not in data:
+            raise Exception(f"Container creation failed: {data}")
+        container_id = data["id"]
+        print(f"   ✅ Container: {container_id}")
+
+        # Step 2: Poll for processing
+        print(f"   🔄 Waiting for processing...")
+        processing_ok = False
+        for poll in range(60):
+            resp = http_requests.get(
+                f"{GRAPH_API_URL}/{container_id}",
+                params={"fields": "status_code,status", "access_token": IG_ACCESS_TOKEN},
+            )
+            status_data = resp.json()
+            status = status_data.get("status_code", "UNKNOWN")
+            if status == "FINISHED":
+                print(f"   ✅ Processing complete ({poll * 5}s)")
+                processing_ok = True
+                break
+            if status in ("ERROR", "EXPIRED"):
+                last_error = f"Processing failed: {status_data}"
+                print(f"   ⚠️ {last_error}")
+                break
+            time.sleep(5)
+        else:
+            last_error = "Processing timeout (300s)"
+            print(f"   ⚠️ {last_error}")
+
+        if not processing_ok:
+            continue  # Retry with fresh container
+
+        # Small delay before publish
         time.sleep(5)
-    else:
-        raise Exception("Processing timeout (300s)")
 
-    # Step 3: Publish
-    print(f"   📢 Publishing Reel...")
-    resp = http_requests.post(
-        f"{GRAPH_API_URL}/{ig_account_id}/media_publish",
-        params={"creation_id": container_id, "access_token": IG_ACCESS_TOKEN},
-    )
-    data = resp.json()
-    if "id" not in data:
-        raise Exception(f"Publish failed: {data}")
+        # Step 3: Publish (with publish retry)
+        print(f"   📢 Publishing Reel...")
+        for pub_attempt in range(1, 4):
+            if pub_attempt > 1:
+                print(f"      🔄 Publish retry {pub_attempt}/3 (waiting 10s)...")
+                time.sleep(10)
+            resp = http_requests.post(
+                f"{GRAPH_API_URL}/{ig_account_id}/media_publish",
+                params={"creation_id": container_id, "access_token": IG_ACCESS_TOKEN},
+            )
+            data = resp.json()
+            if "id" in data:
+                media_id = data["id"]
+                print(f"   🎉 Published! Media ID: {media_id}")
+                return media_id
+            error_msg = data.get("error", {}).get("message", "")
+            if "invalid" in error_msg.lower() or "not ready" in error_msg.lower():
+                continue  # Retry publish
+            last_error = f"Publish failed: {data}"
+            break
 
-    media_id = data["id"]
-    print(f"   🎉 Published! Media ID: {media_id}")
-    return media_id
+    raise Exception(last_error or "Instagram upload failed after all retries")
 
 
 # ─── Twitter Publishing ─────────────────────────────────────────────────────
@@ -229,7 +257,9 @@ def _get_twitter_oauth1(account="account_1"):
 
 
 def publish_tweet_text(text, account="account_1"):
-    """Post a text-only tweet from the specified account."""
+    """Post a text-only tweet from the specified account.
+    Retries with timestamp suffix on 403 (duplicate content).
+    """
     auth = _get_twitter_oauth1(account)
     resp = http_requests.post(
         f"{TWITTER_API_BASE}/tweets",
@@ -240,6 +270,23 @@ def publish_tweet_text(text, account="account_1"):
         tweet_data = resp.json().get("data", {})
         print(f"   🐦 Tweeted! ID: {tweet_data.get('id')}")
         return tweet_data.get("id")
+
+    # Handle 403 — often means duplicate content
+    if resp.status_code == 403:
+        print(f"   ⚠️ Got 403 (likely duplicate). Retrying with timestamp...")
+        suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
+        modified_text = text[:280 - len(suffix)] + suffix
+        resp2 = http_requests.post(
+            f"{TWITTER_API_BASE}/tweets",
+            json={"text": modified_text},
+            auth=auth,
+        )
+        if resp2.status_code == 201:
+            tweet_data = resp2.json().get("data", {})
+            print(f"   🐦 Tweeted (with timestamp)! ID: {tweet_data.get('id')}")
+            return tweet_data.get("id")
+        raise Exception(f"Tweet failed after retry (HTTP {resp2.status_code}): {resp2.text}")
+
     raise Exception(f"Tweet failed (HTTP {resp.status_code}): {resp.text}")
 
 
@@ -260,8 +307,8 @@ def upload_twitter_media(video_path, account="account_1"):
         },
         auth=auth,
     )
-    if resp.status_code != 202:
-        raise Exception(f"Media INIT failed: {resp.text}")
+    if resp.status_code not in (200, 201, 202):
+        raise Exception(f"Media INIT failed (HTTP {resp.status_code}): {resp.text}")
     media_id = resp.json()["media_id_string"]
     print(f"   📦 Media INIT: {media_id}")
 
@@ -315,7 +362,9 @@ def upload_twitter_media(video_path, account="account_1"):
 
 
 def publish_tweet_with_video(text, video_path, account="account_1"):
-    """Upload video and post tweet from the specified account."""
+    """Upload video and post tweet from the specified account.
+    Retries with timestamp suffix on 403 (duplicate content).
+    """
     media_id = upload_twitter_media(video_path, account)
     auth = _get_twitter_oauth1(account)
     resp = http_requests.post(
@@ -327,6 +376,23 @@ def publish_tweet_with_video(text, video_path, account="account_1"):
         tweet_data = resp.json().get("data", {})
         print(f"   🐦 Tweeted with video! ID: {tweet_data.get('id')}")
         return tweet_data.get("id")
+
+    # Handle 403 — often means duplicate content
+    if resp.status_code == 403:
+        print(f"   ⚠️ Got 403 (likely duplicate). Retrying with timestamp...")
+        suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
+        modified_text = text[:280 - len(suffix)] + suffix
+        resp2 = http_requests.post(
+            f"{TWITTER_API_BASE}/tweets",
+            json={"text": modified_text, "media": {"media_ids": [media_id]}},
+            auth=auth,
+        )
+        if resp2.status_code == 201:
+            tweet_data = resp2.json().get("data", {})
+            print(f"   🐦 Tweeted with video (with timestamp)! ID: {tweet_data.get('id')}")
+            return tweet_data.get("id")
+        raise Exception(f"Tweet+video failed after retry (HTTP {resp2.status_code}): {resp2.text}")
+
     raise Exception(f"Tweet+video failed (HTTP {resp.status_code}): {resp.text}")
 
 
