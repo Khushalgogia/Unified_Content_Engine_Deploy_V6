@@ -1746,7 +1746,13 @@ elif page == "🐦 Tweet Reply Studio":
                                         result = client.post_tweet(edited_text, reply_to_tweet_id=tweet.get("id"))
                                         st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
                                     except Exception as e:
-                                        st.error(f"❌ Failed: {e}")
+                                        err = str(e)
+                                        if "403" in err and "reply" in err.lower():
+                                            st.error("❌ Reply blocked — the tweet author has restricted who can reply (only followers/mentioned accounts). Try a different tweet.")
+                                        elif "403" in err:
+                                            st.error(f"❌ Forbidden — Twitter rejected the reply. The author may have limited replies. Error: {err[:150]}")
+                                        else:
+                                            st.error(f"❌ Failed: {e}")
 
                             with col_sched:
                                 if st.button("📅 Schedule", key=f"tsched_{t_idx}_{j_idx}",
@@ -1875,7 +1881,13 @@ elif page == "🐦 Tweet Reply Studio":
                             result = client.post_tweet(reply_text, reply_to_tweet_id=tweet.get("id"))
                             st.success(f"✅ Reply posted! Tweet ID: {result.get('id', 'unknown')}")
                         except Exception as e:
-                            st.error(f"❌ Failed: {e}")
+                            err = str(e)
+                            if "403" in err and "reply" in err.lower():
+                                st.error("❌ Reply blocked — the tweet author has restricted who can reply (only followers/mentioned accounts). Try a different tweet.")
+                            elif "403" in err:
+                                st.error(f"❌ Forbidden — Twitter rejected the reply. The author may have limited replies. Error: {err[:150]}")
+                            else:
+                                st.error(f"❌ Failed: {e}")
 
                 with mc2:
                     if st.button("📅 Schedule Reply", key=f"m_sched_{m_idx}",
