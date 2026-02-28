@@ -256,14 +256,18 @@ def _get_twitter_oauth1(account="account_1"):
     )
 
 
-def publish_tweet_text(text, account="account_1"):
+def publish_tweet_text(text, account="account_1", reply_to_tweet_id=None):
     """Post a text-only tweet from the specified account.
     Retries with timestamp suffix on 403 (duplicate content).
+    If reply_to_tweet_id is set, posts as a reply to that tweet.
     """
     auth = _get_twitter_oauth1(account)
+    payload = {"text": text}
+    if reply_to_tweet_id:
+        payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
     resp = http_requests.post(
         f"{TWITTER_API_BASE}/tweets",
-        json={"text": text},
+        json=payload,
         auth=auth,
     )
     if resp.status_code == 201:
@@ -276,9 +280,12 @@ def publish_tweet_text(text, account="account_1"):
         print(f"   ⚠️ Got 403 (likely duplicate). Retrying with timestamp...")
         suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
         modified_text = text[:280 - len(suffix)] + suffix
+        payload2 = {"text": modified_text}
+        if reply_to_tweet_id:
+            payload2["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
         resp2 = http_requests.post(
             f"{TWITTER_API_BASE}/tweets",
-            json={"text": modified_text},
+            json=payload2,
             auth=auth,
         )
         if resp2.status_code == 201:
@@ -361,15 +368,19 @@ def upload_twitter_media(video_path, account="account_1"):
     return media_id
 
 
-def publish_tweet_with_video(text, video_path, account="account_1"):
+def publish_tweet_with_video(text, video_path, account="account_1", reply_to_tweet_id=None):
     """Upload video and post tweet from the specified account.
     Retries with timestamp suffix on 403 (duplicate content).
+    If reply_to_tweet_id is set, posts as a reply to that tweet.
     """
     media_id = upload_twitter_media(video_path, account)
     auth = _get_twitter_oauth1(account)
+    payload = {"text": text, "media": {"media_ids": [media_id]}}
+    if reply_to_tweet_id:
+        payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
     resp = http_requests.post(
         f"{TWITTER_API_BASE}/tweets",
-        json={"text": text, "media": {"media_ids": [media_id]}},
+        json=payload,
         auth=auth,
     )
     if resp.status_code == 201:
@@ -382,9 +393,12 @@ def publish_tweet_with_video(text, video_path, account="account_1"):
         print(f"   ⚠️ Got 403 (likely duplicate). Retrying with timestamp...")
         suffix = f" [{datetime.now(timezone.utc).strftime('%H:%M')}]"
         modified_text = text[:280 - len(suffix)] + suffix
+        payload2 = {"text": modified_text, "media": {"media_ids": [media_id]}}
+        if reply_to_tweet_id:
+            payload2["reply"] = {"in_reply_to_tweet_id": str(reply_to_tweet_id)}
         resp2 = http_requests.post(
             f"{TWITTER_API_BASE}/tweets",
-            json={"text": modified_text, "media": {"media_ids": [media_id]}},
+            json=payload2,
             auth=auth,
         )
         if resp2.status_code == 201:
@@ -443,6 +457,7 @@ def publish_pending_posts():
         video_url = post.get("video_url")
         twitter_account = post.get("twitter_account", "account_1")
         instagram_account = post.get("instagram_account", "khushal_page")
+        reply_to_tweet_id = post.get("reply_to_tweet_id")
 
         # Note: double-publish prevention is handled by .eq("status", "pending")
         # on the final status update below
@@ -451,6 +466,8 @@ def publish_pending_posts():
         print(f"📋 Post #{post_id} — {platform}")
         print(f"   Caption: {caption[:80]}{'...' if len(caption) > 80 else ''}")
         print(f"   Scheduled: {post['scheduled_time']}")
+        if reply_to_tweet_id:
+            print(f"   ↩️ Reply to tweet: {reply_to_tweet_id}")
 
         video_path = None
 
@@ -467,13 +484,13 @@ def publish_pending_posts():
 
             elif platform == "twitter_text":
                 print(f"   🐦 Posting from: {twitter_account}")
-                publish_tweet_text(caption, account=twitter_account)
+                publish_tweet_text(caption, account=twitter_account, reply_to_tweet_id=reply_to_tweet_id)
 
             elif platform == "twitter_video":
                 if not video_path:
                     raise ValueError("Twitter video post requires a video")
                 print(f"   🐦 Posting from: {twitter_account}")
-                publish_tweet_with_video(caption, video_path, account=twitter_account)
+                publish_tweet_with_video(caption, video_path, account=twitter_account, reply_to_tweet_id=reply_to_tweet_id)
 
             else:
                 raise ValueError(f"Unknown platform: {platform}")
