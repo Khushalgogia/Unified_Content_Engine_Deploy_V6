@@ -460,11 +460,12 @@ def publish_pending_posts():
         reply_to_tweet_id = post.get("reply_to_tweet_id")
 
         # ── Atomic claim: prevent double-posting ──────────────────────────
-        # Set status to 'publishing' ONLY if still 'pending'.
+        # Set posted_at to now ONLY if still 'pending' with no posted_at.
         # If another scheduler already claimed it, this update affects 0 rows.
+        claim_time = datetime.now(timezone.utc).isoformat()
         claim = supabase.table(TABLE_NAME).update({
-            "status": "publishing",
-        }).eq("id", post_id).eq("status", "pending").execute()
+            "posted_at": claim_time,
+        }).eq("id", post_id).eq("status", "pending").is_("posted_at", "null").execute()
 
         if not claim.data:
             print(f"   ⏭  Post #{post_id} already claimed by another scheduler, skipping.")
@@ -503,11 +504,10 @@ def publish_pending_posts():
             else:
                 raise ValueError(f"Unknown platform: {platform}")
 
-            # Mark as posted
+            # Mark as posted (posted_at already set by claim)
             supabase.table(TABLE_NAME).update({
                 "status": "posted",
-                "posted_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", post_id).eq("status", "publishing").execute()
+            }).eq("id", post_id).eq("status", "pending").execute()
             print(f"   ✅ Marked as posted")
 
             # Clean up storage
@@ -519,7 +519,8 @@ def publish_pending_posts():
             supabase.table(TABLE_NAME).update({
                 "status": "failed",
                 "error_message": str(e)[:500],
-            }).eq("id", post_id).eq("status", "publishing").execute()
+                "posted_at": None,
+            }).eq("id", post_id).eq("status", "pending").execute()
 
         finally:
             # Clean up temp file

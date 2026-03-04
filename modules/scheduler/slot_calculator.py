@@ -73,15 +73,33 @@ def get_next_slot(last_scheduled_time=None):
                         hour=hour, minute=minute, second=0, microsecond=0
                     )
                 )
-                return candidate
+                if candidate > now:
+                    return candidate
 
         # All slots on that day are used → first slot next day
         next_day = last_date + timedelta(days=1)
         first_hour, first_minute = SLOT_TIMES[0]
-        return IST.localize(
+        candidate = IST.localize(
             datetime.combine(next_day, datetime.min.time()).replace(
                 hour=first_hour, minute=first_minute, second=0, microsecond=0
             )
+        )
+
+        # Safety: if even next_day's first slot is in the past (queue is very old),
+        # fall back to the empty-queue logic (find next slot from NOW)
+        if candidate > now:
+            return candidate
+
+        # Fall through to find next slot from now
+        for hour, minute in SLOT_TIMES:
+            fallback = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if fallback > now:
+                return fallback
+
+        # All today's slots past → tomorrow's first slot
+        tomorrow = now + timedelta(days=1)
+        return tomorrow.replace(
+            hour=SLOT_TIMES[0][0], minute=SLOT_TIMES[0][1], second=0, microsecond=0
         )
 
 
